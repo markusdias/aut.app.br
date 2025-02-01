@@ -124,26 +124,64 @@ If you find this template helpful, please give it a ⭐️ on GitHub!
 
 ## Gerenciamento do Banco de Dados
 
-### Scripts Disponíveis
+### Comandos Disponíveis
 
-- `npm run db:clean`: Limpa o banco de dados, removendo todas as tabelas existentes
-- `npm run migrate:init`: Inicializa o estado das migrações
-- `npm run migrate`: Executa as migrações pendentes
+O projeto utiliza um gerenciador unificado de banco de dados com os seguintes comandos:
 
-### Resetando o Banco de Dados
+- `npm run db` - Mostra todos os comandos disponíveis
+- `npm run db:check` - Verifica o estado das migrações e identifica discrepâncias
+- `npm run db:reset` - Reseta e reexecuta todas as migrações (requer --confirm)
+- `npm run db:clean` - Limpa dados específicos do banco (requer --confirm)
 
-Para resetar completamente o banco de dados e aplicar todas as migrações:
+### Verificando Estado das Migrações
+
+Para verificar o estado atual das migrações e identificar possíveis problemas:
 
 ```bash
-npm run db:clean && npm run migrate:init && npm run migrate
+npm run db:check
 ```
 
 Este comando irá:
-1. Remover todas as tabelas existentes
-2. Inicializar o estado das migrações
-3. Recriar todas as tabelas com a estrutura mais recente
+1. Listar todas as migrações executadas no banco
+2. Mostrar todos os arquivos de migração locais
+3. Identificar discrepâncias entre banco e arquivos
 
-**Atenção**: Use o comando de reset apenas em ambiente de desenvolvimento. Nunca use em produção, pois todos os dados serão perdidos.
+### Resetando Migrações
+
+Para resetar completamente o estado das migrações:
+
+```bash
+npm run db:reset -- --confirm
+```
+
+Este comando irá:
+1. Fazer backup da tabela de migrações atual
+2. Limpar o registro de migrações
+3. Reexecutar todas as migrações em ordem
+
+**⚠️ ATENÇÃO**: Use este comando com cautela! Em produção, sempre faça backup antes.
+
+### Limpando Dados
+
+Para limpar dados específicos do banco:
+
+```bash
+npm run db:clean -- --confirm
+```
+
+Este comando irá:
+1. Limpar metadados de planos
+2. Desativar planos inativos
+3. Manter a estrutura do banco intacta
+
+**Nota**: Diferente do reset, este comando não afeta a estrutura do banco, apenas dados específicos.
+
+### Boas Práticas
+
+1. Sempre verifique o estado com `db:check` antes de executar operações destrutivas
+2. Use `--confirm` para comandos que podem causar perda de dados
+3. Em produção, sempre faça backup antes de qualquer operação
+4. Mantenha as migrações versionadas e nunca modifique migrações já executadas
 
 ## Gerenciamento de Benefícios dos Produtos
 
@@ -192,3 +230,200 @@ Este comando irá:
 3. Marcar produtos removidos como inativos
 
 > **Nota**: Os benefícios são exibidos automaticamente na página de pricing para produtos que possuem metadados configurados.
+
+## API Routes
+
+### Autenticação (Clerk)
+
+#### GET /sign-in
+Página de login do sistema.
+
+- **Descrição**: Interface de autenticação gerenciada pelo Clerk
+- **Redirecionamento**: Após login bem-sucedido, redireciona para `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`
+- **Middleware**: Protegido pelo middleware do Clerk
+- **UI Components**: Utiliza componentes oficiais do Clerk para autenticação
+
+#### GET /sign-up
+Página de registro de novos usuários.
+
+- **Descrição**: Interface de registro gerenciada pelo Clerk
+- **Redirecionamento**: Após registro bem-sucedido, redireciona para `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL`
+- **Middleware**: Protegido pelo middleware do Clerk
+- **UI Components**: Utiliza componentes oficiais do Clerk para registro
+
+### Dashboard
+
+#### GET /dashboard
+Interface principal do usuário após autenticação.
+
+- **Descrição**: Interface principal do usuário após autenticação
+- **Autenticação**: Requerida
+- **Middleware**: Protegido pelo middleware de autenticação
+- **Features**:
+  - Visão geral das estatísticas
+  - Atividades recentes
+  - Status da assinatura
+
+#### GET /dashboard/settings
+Configurações do usuário.
+
+- **Descrição**: Interface para gerenciar configurações do usuário
+- **Autenticação**: Requerida
+- **Features**:
+  - Perfil do usuário
+  - Preferências
+  - Configurações de notificação
+  - Integrações
+
+### Planos e Assinaturas
+
+#### GET /api/plans
+Retorna todos os planos de assinatura disponíveis.
+
+- **Descrição**: Busca os planos de assinatura cadastrados e, se não encontrar nenhum, sincroniza automaticamente com o Stripe.
+- **Autenticação**: Não requerida
+- **Resposta de Sucesso**:
+  ```json
+  {
+    "plans": [
+      {
+        "planId": "string",
+        "name": "string",
+        "description": "string",
+        "amount": "string",
+        "currency": "string",
+        "interval": "month" | "year" | "one_time",
+        "active": boolean,
+        "metadata": object | null
+      }
+    ],
+    "message": "Planos carregados com sucesso"
+  }
+  ```
+- **Resposta de Erro**:
+  ```json
+  {
+    "error": "Erro ao buscar planos de assinatura"
+  }
+  ```
+- **Código de Status**: 
+  - 200: Sucesso
+  - 500: Erro interno
+
+### Workspaces
+
+#### GET /dashboard/workspaces
+Lista todos os workspaces do usuário.
+
+- **Descrição**: Interface para gerenciar workspaces
+- **Autenticação**: Requerida
+- **Features**:
+  - Lista de workspaces
+  - Criação de novo workspace
+  - Gerenciamento de membros
+  - Configurações do workspace
+
+#### GET /dashboard/workspaces/[id]
+Detalhes de um workspace específico.
+
+- **Descrição**: Interface para gerenciar um workspace específico
+- **Autenticação**: Requerida
+- **Parâmetros**:
+  - `id`: ID do workspace
+- **Features**:
+  - Detalhes do workspace
+  - Membros
+  - Atividades
+  - Configurações
+
+### Playground
+
+#### GET /playground
+Interface do playground de IA.
+
+- **Descrição**: Ambiente para testar e interagir com IA
+- **Autenticação**: Requerida
+- **Features**:
+  - Chat com IA
+  - Histórico de conversas
+  - Configurações de modelo
+  - Exemplos predefinidos
+
+### Marketing
+
+#### GET /
+Página inicial (Landing Page).
+
+- **Descrição**: Página principal de marketing
+- **Autenticação**: Não requerida
+- **Features**:
+  - Apresentação do produto
+  - Planos e preços
+  - Casos de uso
+  - Formulário de contato
+
+#### GET /pricing
+Página de preços.
+
+- **Descrição**: Exibe planos e preços disponíveis
+- **Autenticação**: Não requerida
+- **Features**:
+  - Comparação de planos
+  - Benefícios detalhados
+  - Botões de ação para assinatura
+  - FAQs sobre preços
+
+### Proteção de Rotas
+
+O sistema utiliza múltiplas camadas de proteção:
+
+1. **Middleware de Autenticação**:
+   - Protege rotas que requerem autenticação
+   - Redireciona usuários não autenticados para login
+   - Gerencia sessões e tokens
+
+2. **Middleware de Autorização**:
+   - Verifica permissões do usuário
+   - Controla acesso baseado em roles
+   - Protege recursos sensíveis
+
+3. **Rate Limiting**:
+   - Limita número de requisições por IP
+   - Previne abusos e ataques
+   - Configurável por rota
+
+### Estrutura de URLs
+
+```
+/                           # Landing Page
+├── /sign-in               # Login
+├── /sign-up              # Registro
+├── /pricing              # Preços
+├── /dashboard            # Painel Principal
+│   ├── /settings        # Configurações
+│   └── /workspaces      # Workspaces
+│       └── /[id]        # Workspace Específico
+└── /playground          # Playground IA
+```
+
+### Boas Práticas para Rotas
+
+1. **Nomenclatura**:
+   - Use nomes descritivos e consistentes
+   - Mantenha URLs em minúsculas
+   - Use hífens para separar palavras
+
+2. **Segurança**:
+   - Implemente autenticação onde necessário
+   - Valide todos os parâmetros de rota
+   - Use HTTPS em produção
+
+3. **Performance**:
+   - Implemente cache quando possível
+   - Otimize carregamento de dados
+   - Use loading states apropriados
+
+4. **UX**:
+   - Mantenha URLs amigáveis
+   - Implemente redirecionamentos apropriados
+   - Forneça feedback claro de erros

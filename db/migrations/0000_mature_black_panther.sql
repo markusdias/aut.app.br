@@ -11,20 +11,6 @@ CREATE TABLE "invoices" (
 	"user_id" text
 );
 --> statement-breakpoint
-CREATE TABLE "payments" (
-	"id" serial PRIMARY KEY NOT NULL,
-	"created_time" timestamp DEFAULT now(),
-	"stripe_id" text,
-	"email" text,
-	"amount" text,
-	"payment_time" text,
-	"payment_date" text,
-	"currency" text,
-	"user_id" text,
-	"customer_details" text,
-	"payment_intent" text
-);
---> statement-breakpoint
 CREATE TABLE "subscriptions_plans" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_time" timestamp DEFAULT now(),
@@ -33,7 +19,10 @@ CREATE TABLE "subscriptions_plans" (
 	"description" text,
 	"amount" text,
 	"currency" text,
-	"interval" text
+	"interval" text,
+	"active" boolean DEFAULT true,
+	"metadata" jsonb,
+	CONSTRAINT "subscriptions_plans_plan_id_unique" UNIQUE("plan_id")
 );
 --> statement-breakpoint
 CREATE TABLE "subscriptions" (
@@ -50,7 +39,7 @@ CREATE TABLE "subscriptions" (
 	"user_id" text
 );
 --> statement-breakpoint
-CREATE TABLE "user" (
+CREATE TABLE "users" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"created_time" timestamp DEFAULT now(),
 	"email" text,
@@ -61,6 +50,6 @@ CREATE TABLE "user" (
 	"user_id" text,
 	"subscription" text,
 	"credits" text,
-	CONSTRAINT "user_email_unique" UNIQUE("email"),
-	CONSTRAINT "user_user_id_unique" UNIQUE("user_id")
+	CONSTRAINT "users_email_unique" UNIQUE("email"),
+	CONSTRAINT "users_user_id_unique" UNIQUE("user_id")
 );

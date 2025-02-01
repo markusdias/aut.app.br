@@ -11,8 +11,19 @@
     "migrate": "tsx scripts/migrate.ts",
     "migrate:prod": "NODE_ENV=production tsx scripts/migrate.ts",
     "migrate:init": "tsx scripts/init-migrations.ts",
-    "db:clean": "tsx scripts/clean-database.ts",
-    "sync:plans": "tsx scripts/sync-stripe-plans.ts"
+    "migrate:check": "tsx scripts/check-migrations.ts",
+    "migrate:reset": "tsx scripts/reset-migrations.ts",
+    "db": "tsx scripts/db-manager.ts",
+    "db:check": "tsx scripts/db-manager.ts check",
+    "db:reset": "tsx scripts/db-manager.ts reset",
+    "db:clean": "tsx scripts/db-manager.ts clean",
+    "db:fix": "tsx scripts/db-manager.ts fix",
+    "db:check-table": "tsx scripts/db-manager.ts check-table",
+    "db:migrate": "tsx scripts/db-manager.ts migrate",
+    "db:migrate:prod": "tsx scripts/db-manager.ts migrate prod",
+    "db:init": "tsx scripts/db-manager.ts init",
+    "db:sync-plans": "tsx scripts/db-manager.ts sync-plans",
+    "db:clean-migrations": "tsx scripts/db-manager.ts clean-migrations"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.1.2",
