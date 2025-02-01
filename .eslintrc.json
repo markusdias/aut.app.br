@@ -1,0 +1,29 @@
+{
+  "extends": [
+    "next/core-web-vitals",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "plugins": [
+    "@typescript-eslint",
+    "import"
+  ],
+  "rules": {
+    "import/no-restricted-paths": [
+      "error",
+      {
+        "zones": [
+          {
+            "target": "./app/(pages)/*",
+            "from": "./app/api"
+          },
+          {
+            "target": "./components/*",
+            "from": "./app/(pages)"
+          }
+        ]
+      }
+    ],
+    "@typescript-eslint/no-unused-vars": "error",
+    "import/no-relative-parent-imports": "error"
+  }
+}
