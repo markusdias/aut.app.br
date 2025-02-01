@@ -1,0 +1,1 @@
+ALTER TABLE "subscriptions_plans" ADD COLUMN "metadata" jsonb;

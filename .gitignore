@@ -46,3 +46,4 @@ db/drop-*.sql
 db/drop-*.ts
 db/*.sql
 !db/migrations/*.sql  # Permite apenas arquivos SQL na pasta migrations
+db/drop*  # Ignora qualquer arquivo que comece com drop

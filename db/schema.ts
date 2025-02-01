@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -31,12 +31,14 @@ export const subscriptions = pgTable("subscriptions", {
 export const subscriptionPlans = pgTable("subscriptions_plans", {
   id: serial("id").primaryKey(),
   createdTime: timestamp("created_time").defaultNow(),
-  planId: text("plan_id"),
+  planId: text("plan_id").unique(),
   name: text("name"),
   description: text("description"),
   amount: text("amount"),
   currency: text("currency"),
   interval: text("interval"),
+  active: boolean("active").default(true),
+  metadata: jsonb("metadata"),
 });
 
 export const invoices = pgTable("invoices", {

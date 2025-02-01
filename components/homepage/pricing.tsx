@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { CheckCircle2, DollarSign } from "lucide-react";
+import { CheckCircle2, DollarSign, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
+import { SubscriptionPlan } from "@/utils/data/plans/getSubscriptionPlans";
 
 type PricingSwitchProps = {
   onSwitch: (value: string) => void;
@@ -27,17 +28,14 @@ type PricingSwitchProps = {
 type PricingCardProps = {
   user: any;
   handleCheckout: any;
-  priceIdMonthly: any;
-  priceIdYearly: any;
+  plan: SubscriptionPlan;
   isYearly?: boolean;
-  title: string;
-  monthlyPrice?: number;
-  yearlyPrice?: number;
-  description: string;
-  features: string[];
-  actionLabel: string;
-  popular?: boolean;
-  exclusive?: boolean;
+};
+
+type Benefit = {
+  name: string;
+  included: boolean;
+  order: number;
 };
 
 const PricingHeader = ({
@@ -83,30 +81,38 @@ const PricingSwitch = ({ onSwitch }: PricingSwitchProps) => (
 const PricingCard = ({
   user,
   handleCheckout,
+  plan,
   isYearly,
-  title,
-  priceIdMonthly,
-  priceIdYearly,
-  monthlyPrice,
-  yearlyPrice,
-  description,
-  features,
-  actionLabel,
-  popular,
-  exclusive,
 }: PricingCardProps) => {
   const router = useRouter();
+  
+  // Determina se o plano tem a opção selecionada
+  const hasSelectedPrice = isYearly ? plan.hasYearlyPrice : plan.hasMonthlyPrice;
+  const price = isYearly 
+    ? parseFloat(plan.yearlyPrice || "0") 
+    : parseFloat(plan.monthlyPrice || "0");
+  const priceId = isYearly ? plan.yearlyPriceId : plan.monthlyPriceId;
 
-  console.log("priceIdMonthly", priceIdMonthly);
+  // Parse dos benefícios dos metadados baseado no tipo de preço
+  const currentMetadata = isYearly ? plan.yearlyMetadata : plan.monthlyMetadata;
+  const benefits: Benefit[] = currentMetadata?.benefits 
+    ? JSON.parse(currentMetadata.benefits)
+    : [];
+  const userDescription = currentMetadata?.userDescription || plan.metadata?.userDescription;
+
+  // Se o plano não tem a opção selecionada, não renderiza
+  if (!hasSelectedPrice) {
+    return null;
+  }
+
   return (
     <Card
       className={cn("w-full max-w-sm flex flex-col justify-between px-2 py-1", {
-        "relative border-2 border-blue-500 dark:border-blue-400": popular,
-        "shadow-2xl bg-gradient-to-b from-gray-900 to-gray-800 text-white":
-          exclusive,
+        "relative border-2 border-blue-500 dark:border-blue-400": plan.name?.toLowerCase().includes("pro"),
+        "shadow-2xl bg-gradient-to-b from-gray-900 to-gray-800 text-white": plan.name?.toLowerCase().includes("enterprise"),
       })}
     >
-      {popular && (
+      {plan.name?.toLowerCase().includes("pro") && (
         <div className="absolute -top-3 left-0 right-0 mx-auto w-fit rounded-full bg-blue-500 dark:bg-blue-400 px-3 py-1">
           <p className="text-sm font-medium text-white">Most Popular</p>
         </div>
@@ -114,13 +120,13 @@ const PricingCard = ({
 
       <div>
         <CardHeader className="space-y-2 pb-4">
-          <CardTitle className="text-xl">{title}</CardTitle>
+          <CardTitle className="text-xl">{plan.name}</CardTitle>
           <CardDescription
             className={cn("", {
-              "text-gray-300": exclusive,
+              "text-gray-300": plan.name?.toLowerCase().includes("enterprise"),
             })}
           >
-            {description}
+            {userDescription || plan.description}
           </CardDescription>
         </CardHeader>
 
@@ -128,14 +134,14 @@ const PricingCard = ({
           <div className="flex items-baseline gap-1">
             <span
               className={cn("text-4xl font-bold", {
-                "text-white": exclusive,
+                "text-white": plan.name?.toLowerCase().includes("enterprise"),
               })}
             >
-              ${isYearly ? yearlyPrice : monthlyPrice}
+              ${price.toFixed(2)}
             </span>
             <span
               className={cn("text-muted-foreground", {
-                "text-gray-300": exclusive,
+                "text-gray-300": plan.name?.toLowerCase().includes("enterprise"),
               })}
             >
               /mo
@@ -143,20 +149,42 @@ const PricingCard = ({
           </div>
 
           <div className="mt-6 space-y-2">
-            {features.map((feature) => (
-              <div key={feature} className="flex gap-2">
-                <CheckCircle2
-                  className={cn("h-5 w-5 text-blue-500", {
-                    "text-blue-400": exclusive,
-                  })}
-                />
-                <p
-                  className={cn("text-muted-foreground", {
-                    "text-gray-300": exclusive,
+            {/* Billing type */}
+            <div className="flex gap-2">
+              <CheckCircle2
+                className={cn("h-5 w-5 text-blue-500", {
+                  "text-blue-400": plan.name?.toLowerCase().includes("enterprise"),
+                })}
+              />
+              <span
+                className={cn("text-sm text-muted-foreground", {
+                  "text-gray-300": plan.name?.toLowerCase().includes("enterprise"),
+                })}
+              >
+                {isYearly ? "Yearly" : "Monthly"} billing
+              </span>
+            </div>
+
+            {/* Benefits list */}
+            {benefits.sort((a, b) => a.order - b.order).map((benefit, index) => (
+              <div key={index} className="flex gap-2">
+                {benefit.included ? (
+                  <CheckCircle2
+                    className={cn("h-5 w-5 text-blue-500", {
+                      "text-blue-400": plan.name?.toLowerCase().includes("enterprise"),
+                    })}
+                  />
+                ) : (
+                  <XCircle className="h-5 w-5 text-gray-300" />
+                )}
+                <span
+                  className={cn("text-sm text-muted-foreground", {
+                    "text-gray-300": plan.name?.toLowerCase().includes("enterprise"),
+                    "text-gray-400": !benefit.included,
                   })}
                 >
-                  {feature}
-                </p>
+                  {benefit.name}
+                </span>
               </div>
             ))}
           </div>
@@ -165,19 +193,13 @@ const PricingCard = ({
 
       <CardFooter>
         <Button
-          onClick={() => {
-            if (!user) {
-              router.push("/sign-in");
-              return;
-            }
-            handleCheckout(isYearly ? priceIdYearly : priceIdMonthly, true);
-          }}
           className={cn("w-full", {
-            "bg-blue-500 hover:bg-blue-400": popular,
-            "bg-white text-gray-900 hover:bg-gray-100": exclusive,
+            "bg-blue-500 hover:bg-blue-600": plan.name?.toLowerCase().includes("pro"),
+            "bg-gradient-to-r from-blue-500 to-blue-600": plan.name?.toLowerCase().includes("enterprise"),
           })}
+          onClick={() => handleCheckout(priceId, isYearly)}
         >
-          {actionLabel}
+          Get Started
         </Button>
       </CardFooter>
     </Card>
@@ -185,125 +207,107 @@ const PricingCard = ({
 };
 
 export default function Pricing() {
-  const [isYearly, setIsYearly] = useState<boolean>(false);
-  const togglePricingPeriod = (value: string) =>
-    setIsYearly(parseInt(value) === 1);
+  const [isYearly, setIsYearly] = useState(false);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const { user } = useUser();
-  const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
-    setStripePromise(loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!));
-  }, []);
-
-  const handleCheckout = async (priceId: string, subscription: boolean) => {
-    try {
-      console.log("subscription", subscription);
-      const { data } = await axios.post(
-        `/api/payments/create-checkout-session`,
-        {
-          userId: user?.id,
-          email: user?.emailAddresses?.[0]?.emailAddress,
-          priceId,
-          subscription,
+    // Carrega os planos do banco de dados
+    const loadPlans = async () => {
+      try {
+        const response = await fetch("/api/plans");
+        const data = await response.json();
+        if (data.plans) {
+          const activePlans = data.plans.filter((plan: SubscriptionPlan) => plan.active);
+          // Ordena os planos por preço
+          const sortedPlans = activePlans.sort((a: SubscriptionPlan, b: SubscriptionPlan) => {
+            const priceA = isYearly 
+              ? parseFloat(a.yearlyPrice || "0") / 12 // Converte para preço mensal para comparação
+              : parseFloat(a.monthlyPrice || "0");
+            const priceB = isYearly 
+              ? parseFloat(b.yearlyPrice || "0") / 12 // Converte para preço mensal para comparação
+              : parseFloat(b.monthlyPrice || "0");
+            return priceA - priceB;
+          });
+          setPlans(sortedPlans);
         }
-      );
+      } catch (error) {
+        console.error("Erro ao carregar planos:", error);
+        toast.error("Erro ao carregar planos de assinatura");
+      }
+    };
 
-      if (data.sessionId) {
-        const stripe = await stripePromise;
-        const response = await stripe?.redirectToCheckout({
-          sessionId: data.sessionId,
-        });
-        return response;
-      } else {
-        console.error("Failed to create checkout session");
-        toast("Failed to create checkout session");
-        return;
+    loadPlans();
+  }, [isYearly]); // Adiciona isYearly como dependência para reordenar quando mudar
+
+  // Se não houver planos ativos, não renderiza o componente
+  if (!plans || plans.length === 0) {
+    return null;
+  }
+
+  const handleCheckout = async (priceId: string | null, isYearly: boolean) => {
+    if (!user) {
+      router.push("/sign-in");
+      return;
+    }
+
+    try {
+      const response = await axios.post("/api/payments/create-checkout-session", {
+        priceId,
+        userId: user.id,
+        email: user.emailAddresses[0].emailAddress,
+        subscription: true,
+      });
+
+      const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!);
+      const { error } = await stripe!.redirectToCheckout({
+        sessionId: response.data.sessionId,
+      });
+
+      if (error) {
+        toast.error(error.message);
       }
     } catch (error) {
       console.error("Error during checkout:", error);
-      toast("Error during checkout");
-      return;
+      toast.error("Error during checkout");
     }
   };
 
-  const plans = [
-    {
-      title: "Basic",
-      monthlyPrice: 10,
-      yearlyPrice: 100,
-      description:
-        "Perfect for individuals and small teams just getting started.",
-      features: [
-        "All essential features",
-        "Up to 5 team members",
-        "20GB storage",
-        "Basic support",
-      ],
-      priceIdMonthly: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID,
-      priceIdYearly: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID,
-      actionLabel: "Get Started",
-    },
-    {
-      title: "Pro",
-      monthlyPrice: 25,
-      yearlyPrice: 250,
-      description: "Advanced features for growing teams and businesses.",
-      features: [
-        "All Basic features",
-        "Up to 20 team members",
-        "50GB storage",
-        "Priority support",
-        "Advanced analytics",
-      ],
-      priceIdMonthly: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID,
-      priceIdYearly: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID,
-      actionLabel: "Get Pro",
-      popular: true,
-    },
-    {
-      title: "Enterprise",
-      description: "Custom solutions for large organizations.",
-      features: [
-        "All Pro features",
-        "Unlimited team members",
-        "Unlimited storage",
-        "24/7 dedicated support",
-        "Custom integrations",
-        "SLA guarantees",
-      ],
-      actionLabel: "Contact Sales",
-      priceIdMonthly: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID,
-      priceIdYearly: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID,
-      exclusive: true,
-    },
-  ];
-
   return (
-    <section className="px-4">
-      <div className="max-w-7xl mx-auto">
-        <PricingHeader
-          title="Choose Your Plan"
-          subtitle="Select the perfect plan for your needs. All plans include a 14-day free trial."
-        />
-        <PricingSwitch onSwitch={togglePricingPeriod} />
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          viewport={{ once: true }}
-          className="grid gap-8 md:grid-cols-2 lg:grid-cols-3 mt-10"
-        >
+    <div className="container py-20">
+      <PricingHeader
+        title="Simple, transparent pricing"
+        subtitle="Choose the plan that's right for you"
+      />
+
+      {/* Sempre mostra o switch se houver pelo menos um plano com opção anual */}
+      {plans.some(plan => plan.hasYearlyPrice) && (
+        <div className="mb-10">
+          <PricingSwitch onSwitch={(value) => setIsYearly(value === "1")} />
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-3 lg:gap-8 place-items-center">
+        <div className={cn(
+          "col-span-full grid gap-6 lg:gap-8",
+          {
+            "lg:grid-cols-1 max-w-sm": plans.length === 1,
+            "lg:grid-cols-2 max-w-4xl": plans.length === 2,
+            "lg:grid-cols-3 w-full": plans.length >= 3,
+          }
+        )}>
           {plans.map((plan) => (
             <PricingCard
-              key={plan.title}
+              key={plan.id}
               user={user}
               handleCheckout={handleCheckout}
-              {...plan}
+              plan={plan}
               isYearly={isYearly}
             />
           ))}
-        </motion.div>
+        </div>
       </div>
-    </section>
+    </div>
   );
 }

@@ -6,7 +6,13 @@
     "dev": "next dev --turbo",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync-plans": "tsx scripts/sync-stripe-plans.ts",
+    "migrate": "tsx scripts/migrate.ts",
+    "migrate:prod": "NODE_ENV=production tsx scripts/migrate.ts",
+    "migrate:init": "tsx scripts/init-migrations.ts",
+    "db:clean": "tsx scripts/clean-database.ts",
+    "sync:plans": "tsx scripts/sync-stripe-plans.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.1.2",
@@ -75,6 +81,7 @@
     "next-themes": "^0.3.0",
     "next-view-transitions": "^0.3.4",
     "pg": "^8.13.1",
+    "postgres": "^3.4.5",
     "react": "latest",
     "react-day-picker": "^8.10.1",
     "react-dom": "latest",
@@ -105,6 +112,7 @@
     "eslint-plugin-import": "^2.31.0",
     "postcss": "latest",
     "tailwindcss": "^3.3.5",
+    "tsx": "^4.19.2",
     "typescript": "latest"
   }
 }

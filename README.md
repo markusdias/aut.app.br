@@ -121,3 +121,74 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 If you find this template helpful, please give it a ⭐️ on GitHub!
+
+## Gerenciamento do Banco de Dados
+
+### Scripts Disponíveis
+
+- `npm run db:clean`: Limpa o banco de dados, removendo todas as tabelas existentes
+- `npm run migrate:init`: Inicializa o estado das migrações
+- `npm run migrate`: Executa as migrações pendentes
+
+### Resetando o Banco de Dados
+
+Para resetar completamente o banco de dados e aplicar todas as migrações:
+
+```bash
+npm run db:clean && npm run migrate:init && npm run migrate
+```
+
+Este comando irá:
+1. Remover todas as tabelas existentes
+2. Inicializar o estado das migrações
+3. Recriar todas as tabelas com a estrutura mais recente
+
+**Atenção**: Use o comando de reset apenas em ambiente de desenvolvimento. Nunca use em produção, pois todos os dados serão perdidos.
+
+## Gerenciamento de Benefícios dos Produtos
+
+### Configurando Benefícios no Stripe
+
+Para adicionar benefícios a um produto no Stripe, você precisa configurar os metadados do produto. Siga os passos:
+
+1. Acesse o [Dashboard do Stripe](https://dashboard.stripe.com)
+2. Vá para Products > Selecione o produto
+3. Na seção "Metadata", adicione:
+
+   - Key: `benefits`
+   - Value: Array JSON com os benefícios, exemplo:
+   ```json
+   [
+     {"name":"Five workspaces","included":true,"order":1},
+     {"name":"Email support","included":true,"order":2},
+     {"name":"30 day data retention","included":true,"order":3},
+     {"name":"Custom roles","included":true,"order":4},
+     {"name":"Priority support","included":true,"order":5},
+     {"name":"SSO","included":true,"order":6}
+   ]
+   ```
+
+   - Key: `userDescription`
+   - Value: Descrição do público-alvo, exemplo: `"Best for 5-50 users"`
+
+### Estrutura dos Benefícios
+
+Cada benefício no array deve ter:
+- `name`: Nome do benefício
+- `included`: Boolean indicando se está incluso (`true`) ou não (`false`)
+- `order`: Número inteiro para ordenação na exibição
+
+### Sincronização com o Banco de Dados
+
+Após fazer alterações nos produtos ou metadados no Stripe, execute:
+
+```bash
+npm run sync:plans
+```
+
+Este comando irá:
+1. Sincronizar todos os produtos ativos do Stripe
+2. Atualizar preços e metadados no banco de dados
+3. Marcar produtos removidos como inativos
+
+> **Nota**: Os benefícios são exibidos automaticamente na página de pricing para produtos que possuem metadados configurados.

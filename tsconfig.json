@@ -8,6 +8,7 @@
       "@/types/*": ["types/*"],
       "@/styles/*": ["styles/*"],
       "@/db/*": ["db/*"],
+      "@/scripts/*": ["scripts/*"],
       "@/config": ["config.ts"],
       "@/app/*": ["app/*"]
     },
