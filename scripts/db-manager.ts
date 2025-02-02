@@ -32,11 +32,36 @@ export class DatabaseManager {
     this.sql = postgres(dbUrl, {
       max: 1,
       ssl: "require",
-      connect_timeout: 10
+      connect_timeout: 30,
+      idle_timeout: 30,
+      max_lifetime: 60 * 30
     });
 
     this.db = drizzle(this.sql, { schema });
     this.stripe = new Stripe(stripeKey);
+  }
+
+  private async checkPermissions() {
+    try {
+      // Verifica se temos permissão para alterar tabelas
+      await this.sql`
+        DO $$ 
+        BEGIN
+          -- Verifica se o usuário tem permissão para alterar tabelas
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_roles 
+            WHERE rolname = current_user 
+            AND rolcreatedb
+          ) THEN
+            RAISE NOTICE 'Usuário % não tem permissão para criar/alterar tabelas', current_user;
+          END IF;
+        END $$;
+      `;
+      return true;
+    } catch (error) {
+      console.error("❌ Erro ao verificar permissões:", error);
+      return false;
+    }
   }
 
   async checkMigrations() {
@@ -240,15 +265,108 @@ export class DatabaseManager {
       console.log("🚀 Iniciando migração...");
       console.log(`📊 Ambiente: ${isProd ? "production" : "development"}`);
 
-      // Executa migrações
-      await migrate(this.db, {
-        migrationsFolder: "db/migrations",
-        migrationsTable: "drizzle_migrations",
-      });
+      // Verifica permissões
+      console.log("🔑 Verificando permissões...");
+      const hasPermissions = await this.checkPermissions();
+      if (!hasPermissions) {
+        throw new Error("❌ Usuário não tem permissões necessárias para executar migrações");
+      }
+      console.log("✅ Permissões verificadas");
 
-      console.log("✅ Migração concluída com sucesso!");
+      // Verifica estado inicial das migrações
+      const initialState = await this.sql`
+        SELECT hash FROM drizzle_migrations ORDER BY id ASC
+      `;
+      const initialHashes = initialState.map(row => row.hash);
+
+      // Identifica migrações pendentes
+      const migrationsDir = path.join(process.cwd(), "db", "migrations");
+      const localMigrations = fs.readdirSync(migrationsDir)
+        .filter(file => file.endsWith(".sql"))
+        .sort();
+
+      const pendingMigrations = localMigrations
+        .map(file => file.replace(".sql", ""))
+        .filter(hash => !initialHashes.includes(hash));
+
+      if (pendingMigrations.length > 0) {
+        console.log("\n📦 Migrações pendentes detectadas:", pendingMigrations);
+        console.log("🔄 Executando migrações manualmente...");
+
+        for (const migrationFile of localMigrations) {
+          const hash = migrationFile.replace(".sql", "");
+          
+          // Verifica se a migração já foi aplicada
+          const exists = await this.sql`
+            SELECT 1 FROM drizzle_migrations WHERE hash = ${hash}
+          `;
+          
+          if (exists.length === 0) {
+            console.log(`\n📦 Aplicando migração ${migrationFile}...`);
+            
+            // Lê o conteúdo do arquivo
+            const sqlContent = fs.readFileSync(path.join(migrationsDir, migrationFile), 'utf8');
+            
+            // Executa o SQL
+            await this.sql.begin(async (sql) => {
+              try {
+                // Executa o SQL da migração
+                await sql.unsafe(sqlContent);
+                
+                // Registra a migração
+                await sql`
+                  INSERT INTO drizzle_migrations (hash)
+                  VALUES (${hash})
+                `;
+                
+                console.log(`✅ Migração ${migrationFile} aplicada com sucesso!`);
+              } catch (error) {
+                console.error(`❌ Erro ao aplicar migração ${migrationFile}:`, error);
+                throw error;
+              }
+            });
+          } else {
+            console.log(`ℹ️  Migração ${migrationFile} já aplicada.`);
+          }
+        }
+      } else {
+        console.log("\n✅ Não há migrações pendentes.");
+      }
+
+      // Verifica estado final das migrações
+      const finalState = await this.sql`
+        SELECT hash FROM drizzle_migrations ORDER BY id ASC
+      `;
+      const finalHashes = finalState.map(row => row.hash);
+
+      // Verifica se novas migrações foram registradas
+      const newMigrations = finalHashes.filter(hash => !initialHashes.includes(hash));
+
+      if (newMigrations.length > 0) {
+        console.log("\n✅ Novas migrações aplicadas:");
+        newMigrations.forEach(hash => console.log(`  - ${hash}`));
+      }
+
+      // Verifica se ainda há migrações pendentes
+      const remainingMigrations = localMigrations
+        .map(file => file.replace(".sql", ""))
+        .filter(hash => !finalHashes.includes(hash));
+
+      if (remainingMigrations.length > 0) {
+        throw new Error(
+          "❌ Algumas migrações não foram aplicadas:\n" +
+          remainingMigrations.map(hash => `  - ${hash}`).join("\n")
+        );
+      }
+
+      console.log("\n✅ Todas as migrações foram aplicadas com sucesso!");
+      
+      // Fecha a conexão após a migração
+      await this.close();
     } catch (error) {
       console.error("❌ Erro durante a migração:", error);
+      // Garante que a conexão seja fechada mesmo em caso de erro
+      await this.close();
       throw error;
     }
   }

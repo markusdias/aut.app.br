@@ -138,14 +138,27 @@ Se encontrar discrepâncias entre arquivos locais e estado do banco:
 
 ## Lições Aprendidas
 
-### Caso: Coluna metadata em subscriptions_plans
+### Caso: Falha na Execução de Migrações pelo Drizzle
 
-Em 01/02/2025, identificamos que a coluna `metadata` foi adicionada diretamente no banco sem migração.
-Para corrigir e garantir consistência em todos os ambientes:
+Em 02/02/2025, identificamos um problema onde o Drizzle não estava conseguindo executar as migrações automaticamente.
+O problema se manifestava da seguinte forma:
+1. O comando `npm run db:migrate` indicava sucesso
+2. Porém, `npm run db:check` mostrava que as migrações não foram aplicadas
+3. A tabela `drizzle_migrations` não registrava as novas migrações
 
-1. Criamos a migração `0005_optimal_dracula.sql` com verificação de existência
-2. A migração só adiciona a coluna se ela não existir
-3. Isso garante que ambientes sem a coluna serão atualizados corretamente
+Para resolver este problema, implementamos uma solução robusta que:
+1. Verifica o estado atual das migrações no banco
+2. Identifica migrações pendentes comparando com arquivos locais
+3. Executa cada migração pendente manualmente dentro de uma transação
+4. Registra cada migração na tabela `drizzle_migrations` após sucesso
+5. Verifica o estado final para garantir que tudo foi aplicado
+
+A solução foi implementada no arquivo `scripts/db-manager.ts` e inclui:
+- Verificação de permissões antes da execução
+- Execução transacional das migrações
+- Tratamento adequado de erros
+- Fechamento correto das conexões
+- Logs detalhados do processo
 
 ### Medidas Preventivas
 
@@ -177,4 +190,53 @@ END $$;
 Este padrão garante que:
 - A migração é idempotente (pode ser executada múltiplas vezes)
 - Não falha se a coluna já existir
-- Mantém a consistência entre ambientes 
+- Mantém a consistência entre ambientes
+
+### Padrão para Execução Manual de Migrações
+
+Se precisar executar uma migração manualmente, use o seguinte padrão:
+
+```sql
+BEGIN;
+-- Seu SQL aqui
+INSERT INTO drizzle_migrations (hash) VALUES ('nome_da_sua_migracao');
+COMMIT;
+```
+
+Este padrão garante que:
+- A migração e seu registro são atômicos
+- Em caso de falha, nada é aplicado
+- O estado do banco permanece consistente
+
+### Troubleshooting de Migrações
+
+Se encontrar problemas com migrações:
+
+1. Verifique o estado atual:
+   ```bash
+   npm run db:check
+   ```
+
+2. Se houver discrepâncias:
+   - Verifique se todas as migrações estão na pasta correta
+   - Compare o conteúdo da tabela `drizzle_migrations`
+   - Verifique os logs de erro
+
+3. Para forçar a execução manual:
+   - Use `sql.unsafe()` para executar o SQL diretamente
+   - Registre a migração na tabela após sucesso
+   - Verifique se a migração foi registrada
+
+4. Em último caso:
+   - Faça backup do banco
+   - Use `npm run db:reset --confirm`
+   - Reaplique todas as migrações
+
+### Boas Práticas Adicionais
+
+1. Mantenha logs detalhados das execuções de migração
+2. Use transações para garantir atomicidade
+3. Sempre verifique o estado antes e depois
+4. Documente qualquer execução manual
+5. Mantenha backups antes de executar migrações
+6. Use o padrão de verificação de existência em migrações críticas

@@ -249,9 +249,17 @@ async function handleSubscriptionEvent(
   event: Stripe.Event,
   type: "created" | "updated" | "deleted"
 ) {
-
   const subscription = event.data.object as Stripe.Subscription;
   const customerEmail = await getCustomerEmail(subscription.customer as string);
+
+  console.log('📝 Subscription event details:', {
+    type,
+    subscriptionId: subscription.id,
+    customer: subscription.customer,
+    metadata: subscription.metadata,
+    email: customerEmail,
+    defaultPaymentMethod: subscription.default_payment_method
+  });
 
   if (!customerEmail) {
     return NextResponse.json({
@@ -260,19 +268,50 @@ async function handleSubscriptionEvent(
     });
   }
 
+  // Se não tiver userId nos metadados da assinatura, busca na tabela users pelo email
+  let userId = subscription.metadata?.userId || "";
+  if (!userId) {
+    console.log('⚠️ No userId in metadata, searching by email');
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, customerEmail || ""))
+      .limit(1);
+
+    if (user.length > 0 && user[0].userId) {
+      userId = user[0].userId;
+      console.log('✅ Found userId by email:', userId);
+      
+      // Atualiza os metadados da assinatura no Stripe com o userId
+      await stripe.subscriptions.update(subscription.id, {
+        metadata: { ...subscription.metadata, userId }
+      });
+    }
+  }
+
   const subscriptionData = {
     subscriptionId: subscription.id,
     stripeUserId: subscription.customer as string,
     status: subscription.status,
-    startDate: new Date(subscription.created * 1000).toISOString(),
+    startDate: new Date(subscription.start_date * 1000).toISOString(),
     planId: subscription.items.data[0]?.price.id,
-    userId: subscription.metadata?.userId || "",
+    userId: userId || "",
     email: customerEmail,
+    defaultPaymentMethodId: subscription.default_payment_method as string,
+    currentPeriodStart: new Date(subscription.current_period_start * 1000),
+    currentPeriodEnd: new Date(subscription.current_period_end * 1000)
   };
 
-  console.log('📝 Subscription data:', subscriptionData);
+  console.log('📝 Subscription data to save:', subscriptionData);
 
   try {
+    // Verifica se a assinatura já existe
+    const existingSubscription = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.subscriptionId, subscription.id))
+      .limit(1);
+
     if (type === "deleted") {
       // Update subscriptions table
       await db
@@ -288,50 +327,53 @@ async function handleSubscriptionEvent(
         .update(users)
         .set({ subscription: null })
         .where(eq(users.email, customerEmail));
-    } else {
-      // Either insert or update subscription based on type
-      if (type === "created") {
-        const insertedData = await db
-          .insert(subscriptions)
-          .values(subscriptionData)
-          .returning();
 
-        // Atualiza a tabela users com o status da assinatura
-        await db
-          .update(users)
-          .set({ subscription: subscriptionData.status })
-          .where(eq(users.email, customerEmail));
-
-        return NextResponse.json({
-          status: 200,
-          message: "Subscription created successfully",
-          data: insertedData,
-        });
-      } else {
-        const updatedData = await db
-          .update(subscriptions)
-          .set(subscriptionData)
-          .where(eq(subscriptions.subscriptionId, subscription.id))
-          .returning();
-
-        // Atualiza a tabela users com o status da assinatura
-        await db
-          .update(users)
-          .set({ subscription: subscriptionData.status })
-          .where(eq(users.email, customerEmail));
-
-        return NextResponse.json({
-          status: 200,
-          message: "Subscription updated successfully",
-          data: updatedData,
-        });
-      }
+      return NextResponse.json({
+        status: 200,
+        message: "Subscription cancelled successfully",
+      });
     }
 
-    return NextResponse.json({
-      status: 200,
-      message: `Subscription ${type} success`,
-    });
+    // Se a assinatura não existe e é um evento "created", insere
+    // Se já existe ou é um evento "updated", atualiza
+    if (!existingSubscription.length && type === "created") {
+      console.log('📝 Creating new subscription record');
+      const insertedData = await db
+        .insert(subscriptions)
+        .values(subscriptionData)
+        .returning();
+
+      // Atualiza a tabela users com o status da assinatura
+      await db
+        .update(users)
+        .set({ subscription: subscriptionData.status })
+        .where(eq(users.email, customerEmail));
+
+      return NextResponse.json({
+        status: 200,
+        message: "Subscription created successfully",
+        data: insertedData,
+      });
+    } else {
+      console.log('📝 Updating existing subscription record');
+      const updatedData = await db
+        .update(subscriptions)
+        .set(subscriptionData)
+        .where(eq(subscriptions.subscriptionId, subscription.id))
+        .returning();
+
+      // Atualiza a tabela users com o status da assinatura
+      await db
+        .update(users)
+        .set({ subscription: subscriptionData.status })
+        .where(eq(users.email, customerEmail));
+
+      return NextResponse.json({
+        status: 200,
+        message: "Subscription updated successfully",
+        data: updatedData,
+      });
+    }
   } catch (error) {
     console.error(`Error during subscription ${type}:`, error);
     return NextResponse.json({
@@ -352,7 +394,9 @@ async function handleInvoiceEvent(
     email: customerEmail,
     amount: invoice.amount_paid,
     currency: invoice.currency,
-    metadata: invoice.metadata
+    metadata: invoice.metadata,
+    invoiceId: invoice.id,
+    paymentIntent: invoice.payment_intent
   });
 
   if (!customerEmail) {
@@ -371,9 +415,42 @@ async function handleInvoiceEvent(
     status,
     userId: invoice.metadata?.userId,
     email: customerEmail,
+    periodStart: new Date(invoice.period_start * 1000),
+    periodEnd: new Date(invoice.period_end * 1000),
+    paymentIntent: invoice.payment_intent as string
   };
 
   try {
+    // Verifica se a fatura já existe
+    const existingInvoice = await db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.invoiceId, invoice.id))
+      .limit(1);
+
+    if (existingInvoice.length > 0) {
+      console.log('✅ Invoice already exists, updating status');
+      // Atualiza a fatura existente
+      const updatedInvoice = await db
+        .update(invoices)
+        .set({
+          status,
+          amountPaid: invoiceData.amountPaid,
+          amountDue: invoiceData.amountDue,
+          paymentIntent: invoiceData.paymentIntent
+        })
+        .where(eq(invoices.invoiceId, invoice.id))
+        .returning();
+
+      return NextResponse.json({
+        status: 200,
+        message: `Invoice payment status updated to ${status}`,
+        data: updatedInvoice,
+      });
+    }
+
+    console.log('📝 Creating new invoice');
+    // Insere nova fatura
     const insertedInvoice = await db
       .insert(invoices)
       .values(invoiceData)
@@ -385,10 +462,10 @@ async function handleInvoiceEvent(
       data: insertedInvoice,
     });
   } catch (error) {
-    console.error(`Error inserting invoice (payment ${status}):`, error);
+    console.error(`Error handling invoice (payment ${status}):`, error);
     return NextResponse.json({
       status: 500,
-      error: `Error inserting invoice (payment ${status})`,
+      error: `Error handling invoice (payment ${status})`,
     });
   }
 }
@@ -398,24 +475,79 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
   const metadata: any = session?.metadata;
 
   console.log('🏷️ Session metadata:', metadata);
+  console.log('📦 Session details:', {
+    subscription: session.subscription,
+    invoice: session.invoice,
+    customer: session.customer
+  });
 
   if (metadata?.subscription === "true") {
     // This is for subscription payments
     const subscriptionId = session.subscription;
     try {
       // Update subscription metadata in Stripe
-      await stripe.subscriptions.update(subscriptionId as string, { metadata });
+      const subscription = await stripe.subscriptions.update(subscriptionId as string, { metadata });
 
-      // Update invoice with user ID
-      await db
-        .update(invoices)
-        .set({ userId: metadata?.userId })
-        .where(eq(invoices.email, metadata?.email));
+      // Busca a fatura no Stripe para obter period_start e period_end
+      const invoice = await stripe.invoices.retrieve(session.invoice as string);
+      console.log('📅 Invoice completa:', invoice);
+      console.log('📅 Invoice periods:', {
+        periodStart: invoice.period_start,
+        periodEnd: invoice.period_end,
+        billingReason: invoice.billing_reason,
+        created: invoice.created,
+        subscriptionProrationDate: invoice.subscription_proration_date
+      });
 
-      // Update user's subscription
+      // Busca a subscription para obter os períodos corretos
+      const subscriptionDetails = await stripe.subscriptions.retrieve(subscriptionId as string);
+      console.log('🔄 Subscription periods:', {
+        currentPeriodStart: subscriptionDetails.current_period_start,
+        currentPeriodEnd: subscriptionDetails.current_period_end
+      });
+
+      // Verify if invoice exists before updating
+      const existingInvoice = await db
+        .select()
+        .from(invoices)
+        .where(eq(invoices.invoiceId, session.invoice as string))
+        .limit(1);
+
+      if (existingInvoice.length === 0) {
+        console.log('⚠️ Invoice not found, creating new invoice record');
+        // Create new invoice record if it doesn't exist
+        await db
+          .insert(invoices)
+          .values({
+            invoiceId: session.invoice as string,
+            subscriptionId: session.subscription as string,
+            userId: metadata?.userId,
+            email: metadata?.email,
+            status: 'succeeded',
+            amountPaid: String(session.amount_total! / 100),
+            currency: session.currency,
+            periodStart: new Date(subscriptionDetails.current_period_start * 1000),
+            periodEnd: new Date(subscriptionDetails.current_period_end * 1000),
+            paymentIntent: invoice.payment_intent as string
+          });
+      } else {
+        console.log('✅ Updating existing invoice');
+        // Update existing invoice
+        await db
+          .update(invoices)
+          .set({ 
+            userId: metadata?.userId,
+            periodStart: new Date(subscriptionDetails.current_period_start * 1000),
+            periodEnd: new Date(subscriptionDetails.current_period_end * 1000),
+            paymentIntent: invoice.payment_intent as string
+          })
+          .where(eq(invoices.invoiceId, session.invoice as string));
+      }
+
+      // Update user's subscription status
       await db
         .update(users)
-        .set({ subscription: session.id })
+        .set({ subscription: subscription.status })
         .where(eq(users.userId, metadata?.userId));
 
       return NextResponse.json({

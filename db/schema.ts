@@ -26,6 +26,8 @@ export const subscriptions = pgTable("subscriptions", {
   defaultPaymentMethodId: text("default_payment_method_id"),
   email: text("email"),
   userId: text("user_id"),
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
 });
 
 export const subscriptionPlans = pgTable("subscriptions_plans", {
@@ -52,4 +54,7 @@ export const invoices = pgTable("invoices", {
   status: text("status"),
   email: text("email"),
   userId: text("user_id"),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  paymentIntent: text("payment_intent"),
 });

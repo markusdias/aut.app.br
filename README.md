@@ -427,3 +427,143 @@ O sistema utiliza múltiplas camadas de proteção:
    - Mantenha URLs amigáveis
    - Implemente redirecionamentos apropriados
    - Forneça feedback claro de erros
+
+## Estrutura do Stripe e Relacionamentos
+
+### Hierarquia de Objetos no Stripe
+
+1. **Produto (prod_)**
+   - Nível mais alto da hierarquia
+   - Exemplo: "Plano Básico"
+   - Um produto pode ter múltiplos preços
+   - Contém informações básicas como nome e descrição
+
+2. **Preço (price_)**
+   - Vinculado a um produto específico
+   - Define o valor e a recorrência
+   - Exemplo: "R$ 12,00/mês" ou "R$ 120,00/ano" para o mesmo produto
+   - É salvo como `plan_id` no banco de dados
+   - É ÚNICO e REUTILIZÁVEL (múltiplos clientes podem assinar o mesmo `price_`)
+
+3. **Assinatura (sub_)**
+   - Criada quando um cliente assina um preço específico
+   - É ÚNICA para cada combinação cliente/preço
+   - Exemplo: Se 10 clientes assinam o mesmo `price_`, serão gerados 10 diferentes `sub_`
+   - Contém informações específicas como status, datas de início/fim, etc.
+
+4. **Fatura (in_)**
+   - Gerada para cada cobrança da assinatura
+   - Uma assinatura terá múltiplas faturas ao longo do tempo
+   - É ÚNICA para cada cobrança
+
+### Exemplo de Relacionamento
+
+```
+Produto (prod_ABC123)
+└── Preço Mensal (price_XYZ789)
+    ├── Assinatura Cliente A (sub_123)
+    │   ├── Fatura Janeiro (in_jan)
+    │   └── Fatura Fevereiro (in_fev)
+    └── Assinatura Cliente B (sub_456)
+        ├── Fatura Janeiro (in_jan2)
+        └── Fatura Fevereiro (in_fev2)
+```
+
+### Mapeamento no Banco de Dados
+
+1. **subscriptions_plans**
+   - Armazena os `price_` disponíveis
+   - Cada registro representa um preço que pode ser assinado
+   - Contém informações como valor, moeda, intervalo
+
+2. **subscriptions**
+   - Armazena as `sub_` individuais de cada cliente
+   - Cada registro é uma assinatura única
+   - Relaciona um cliente a um plano específico
+
+3. **invoices**
+   - Armazena as `in_` de cada cobrança
+   - Cada registro é uma fatura única
+   - Contém informações de pagamento e período
+
+### Pontos Importantes
+
+1. Um produto pode ter vários preços (diferentes valores/recorrências)
+2. Um preço (`price_`) é único e pode ser assinado por vários clientes
+3. Cada cliente que assina um preço recebe um `sub_` único
+4. O `sub_` nunca se repete para outro cliente
+5. Cada cobrança gera uma fatura (`in_`) única
+
+### Fluxo de Eventos do Stripe
+
+#### Criação Inicial de Assinatura
+
+1. **checkout.session.completed**
+   - Primeiro evento recebido após checkout bem-sucedido
+   - Contém `metadata` com informações do usuário
+   - Atualiza os metadados da assinatura no Stripe
+   - Cria/atualiza registro da fatura inicial
+
+2. **customer.subscription.created**
+   - Indica que a assinatura foi criada
+   - Cria registro na tabela `subscriptions`
+   - Status inicial geralmente é 'incomplete'
+
+3. **invoice.payment_succeeded**
+   - Confirma o pagamento da primeira fatura
+   - Cria/atualiza registro na tabela `invoices`
+   - Inclui períodos de cobertura da fatura
+
+4. **customer.subscription.updated**
+   - Atualiza o status da assinatura para 'active'
+   - Atualiza registro na tabela `subscriptions`
+   - Pode incluir método de pagamento padrão
+
+#### Renovações Automáticas
+
+1. **customer.subscription.updated**
+   - Atualiza períodos da assinatura
+   - Atualiza registro existente em `subscriptions`
+   - Novos `current_period_start` e `current_period_end`
+
+2. **invoice.payment_succeeded**
+   - Nova fatura para o próximo período
+   - Cria novo registro em `invoices`
+   - Mantém histórico de pagamentos
+
+### Campos Importantes por Evento
+
+#### checkout.session.completed
+```json
+{
+  "subscription": "sub_...",
+  "invoice": "in_...",
+  "metadata": {
+    "userId": "user_...",
+    "email": "exemplo@email.com",
+    "subscription": "true"
+  }
+}
+```
+
+#### customer.subscription.created/updated
+```json
+{
+  "id": "sub_...",
+  "status": "active",
+  "current_period_start": "timestamp",
+  "current_period_end": "timestamp",
+  "default_payment_method": "pm_..."
+}
+```
+
+#### invoice.payment_succeeded
+```json
+{
+  "id": "in_...",
+  "subscription": "sub_...",
+  "period_start": "timestamp",
+  "period_end": "timestamp",
+  "payment_intent": "pi_..."
+}
+```
