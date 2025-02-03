@@ -567,3 +567,141 @@ Produto (prod_ABC123)
   "payment_intent": "pi_..."
 }
 ```
+
+## Fluxo de Checkout e Assinaturas
+
+### Visão Geral
+
+O processo de checkout e gerenciamento de assinaturas envolve três partes principais:
+1. Frontend (Next.js)
+2. Backend (Next.js API Routes)
+3. Stripe (Processamento de pagamentos)
+
+### Fluxo Detalhado
+
+1. **Seleção do Plano**
+   - Usuário visualiza os planos disponíveis
+   - Cada plano mostra preços mensais e anuais
+   - Usuário clica em "Assinar" ou "Migrar"
+
+2. **Criação da Sessão de Checkout**
+   - Frontend envia:
+     - `priceId`: ID do preço selecionado
+     - `userId`: ID do usuário atual
+     - `email`: Email do usuário
+     - `subscription: true`: Indica que é uma assinatura
+   - Backend cria sessão no Stripe com:
+     - Metadados do usuário
+     - URLs de sucesso/cancelamento
+     - Configurações da assinatura
+
+3. **Redirecionamento para Checkout**
+   - Usuário é redirecionado para página do Stripe
+   - Insere dados do cartão
+   - Confirma a assinatura
+
+4. **Processamento do Webhook**
+   - Stripe envia eventos via webhook:
+     1. `checkout.session.completed`
+     2. `customer.subscription.created`
+     3. `invoice.payment_succeeded`
+   - Backend processa cada evento:
+     - Atualiza metadados no Stripe
+     - Atualiza banco de dados
+     - Registra logs detalhados
+
+5. **Atualização da Interface**
+   - Usuário é redirecionado para página de sucesso
+   - Interface atualiza mostrando novo plano
+   - Status da assinatura é atualizado
+
+### Eventos do Stripe
+
+#### checkout.session.completed
+```json
+{
+  "subscription": "sub_...",
+  "invoice": "in_...",
+  "metadata": {
+    "userId": "user_...",
+    "email": "exemplo@email.com",
+    "subscription": "true"
+  }
+}
+```
+
+#### customer.subscription.created/updated
+```json
+{
+  "id": "sub_...",
+  "status": "active",
+  "current_period_start": "timestamp",
+  "current_period_end": "timestamp",
+  "default_payment_method": "pm_..."
+}
+```
+
+#### invoice.payment_succeeded
+```json
+{
+  "id": "in_...",
+  "subscription": "sub_...",
+  "period_start": "timestamp",
+  "period_end": "timestamp",
+  "payment_intent": "pi_..."
+}
+```
+
+### Banco de Dados
+
+1. **subscriptions**
+   - `id`: ID interno
+   - `subscriptionId`: ID do Stripe
+   - `userId`: ID do usuário
+   - `email`: Email do usuário
+   - `status`: Status da assinatura
+   - `planId`: ID do plano
+   - `currentPeriodStart`: Início do período
+   - `currentPeriodEnd`: Fim do período
+
+2. **users**
+   - `subscription`: Status atual da assinatura
+
+### Logs e Debug
+
+O sistema mantém logs detalhados em cada etapa:
+1. Criação da sessão de checkout
+2. Processamento de webhooks
+3. Atualizações no banco de dados
+4. Erros e exceções
+
+### Tratamento de Erros
+
+1. **Frontend**
+   - Validação de usuário logado
+   - Validação de dados obrigatórios
+   - Feedback visual de erros
+   - Redirecionamento apropriado
+
+2. **Backend**
+   - Validação de dados recebidos
+   - Tratamento de erros do Stripe
+   - Logs detalhados
+   - Respostas HTTP apropriadas
+
+### Próximos Passos
+
+1. **Tipos do Stripe**
+   - Criar tipos corretos para eventos
+   - Remover uso de `any`
+   - Implementar validação de tipos
+
+2. **Testes**
+   - Testes unitários
+   - Testes de integração
+   - Testes end-to-end
+
+3. **Monitoramento**
+   - Implementar métricas
+   - Alertas de erros
+   - Dashboard de status

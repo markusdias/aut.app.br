@@ -16,18 +16,20 @@ export const users = pgTable("users", {
 
 export const subscriptions = pgTable("subscriptions", {
   id: serial("id").primaryKey(),
-  createdTime: timestamp("created_time").defaultNow(),
-  subscriptionId: text("subscription_id"),
-  stripeUserId: text("stripe_user_id"),
-  status: text("status"),
-  startDate: text("start_date"),
-  endDate: text("end_date"),
-  planId: text("plan_id"),
-  defaultPaymentMethodId: text("default_payment_method_id"),
-  email: text("email"),
+  subscriptionId: text("subscription_id").notNull(),
   userId: text("user_id"),
+  email: text("email"),
+  status: text("status"),
+  stripeUserId: text("stripe_user_id"),
+  planId: text("plan_id"),
   currentPeriodStart: timestamp("current_period_start"),
   currentPeriodEnd: timestamp("current_period_end"),
+  defaultPaymentMethodId: text("default_payment_method_id"),
+  startDate: text("start_date"),
+  createdTime: timestamp("created_time"),
+  previousPlanId: text("previous_plan_id"),
+  planChangedAt: timestamp("plan_changed_at"),
+  canceledAt: timestamp("canceled_at")
 });
 
 export const subscriptionPlans = pgTable("subscriptions_plans", {

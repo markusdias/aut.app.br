@@ -240,3 +240,75 @@ Se encontrar problemas com migrações:
 4. Documente qualquer execução manual
 5. Mantenha backups antes de executar migrações
 6. Use o padrão de verificação de existência em migrações críticas
+
+### Caso: Problema com Snapshots e Recriação de Migrações
+
+Em 02/02/2024, identificamos um problema onde arquivos de migração eram recriados automaticamente.
+O problema se manifestava da seguinte forma:
+1. Ao criar uma nova migração manualmente (ex: `0002_add_plan_change_tracking.sql`)
+2. Um arquivo adicional era criado automaticamente (ex: `0003_add_plan_change_tracking.sql`)
+3. Mesmo após deletar o arquivo extra, ele era recriado
+
+A causa raiz foi identificada:
+1. O drizzle-kit gera snapshots automaticamente em `db/migrations/meta/`
+2. Cada snapshot (`0001_snapshot.json`, `0002_snapshot.json`, etc.) representa um estado do banco
+3. Quando há discrepância entre snapshots e estado atual, o sistema tenta recriar arquivos
+
+Para resolver este problema:
+1. Mantenha apenas o snapshot inicial (`0000_snapshot.json`)
+2. Remova snapshots intermediários
+3. Mantenha o `_journal.json` atualizado com todas as migrações
+
+Exemplo de estrutura correta:
+```
+db/migrations/
+├── 0000_mature_black_panther.sql
+├── 0001_add_subscription_invoice_fields.sql
+├── 0002_add_plan_change_tracking.sql
+└── meta/
+    ├── _journal.json
+    └── 0000_snapshot.json
+```
+
+Se o problema ocorrer:
+1. Pare o servidor Next.js (que pode estar observando alterações)
+2. Remova os arquivos de migração duplicados
+3. Remova snapshots intermediários (`0001_snapshot.json`, `0002_snapshot.json`, etc.)
+4. Mantenha apenas o snapshot inicial
+5. Verifique se o `_journal.json` está correto
+6. Reinicie o servidor
+
+Para prevenir o problema:
+1. Use `npm run db:check` antes de criar novas migrações
+2. Evite criar migrações manualmente, use o drizzle-kit quando possível
+3. Se precisar criar manualmente, siga o padrão de migração segura
+4. Mantenha apenas um snapshot inicial
+5. Monitore o diretório `meta/` para snapshots indesejados
+
+Este problema está relacionado à forma como o drizzle-kit tenta manter o estado do banco sincronizado através de snapshots. 
+Ao limitar os snapshots ao inicial, evitamos que o sistema tente recriar estados intermediários.
+
+## Migrações Duplicadas (02/02/2024)
+
+### Problema
+- Ao criar uma nova migração, às vezes o drizzle-kit pode gerar um arquivo duplicado com o mesmo propósito
+- Por exemplo: `0002_add_plan_change_tracking.sql` e `0003_add_plan_change_tracking.sql`
+- O arquivo duplicado geralmente está vazio e pode ser recriado automaticamente
+
+### Solução
+1. **NÃO** exclua os dados do banco ou force o reset das migrações
+2. Verifique qual arquivo contém as alterações reais (geralmente o primeiro)
+3. Remova apenas o arquivo vazio que está causando a duplicação
+4. Execute a migração pendente usando `npm run db:migrate`
+5. Verifique se tudo está sincronizado com `npm run db:check`
+
+### Prevenção
+- Sempre verifique se já existe uma migração com o mesmo propósito antes de criar uma nova
+- Use nomes descritivos e únicos para cada migração
+- Mantenha o controle de versão das migrações organizado
+- Execute `npm run db:check` regularmente para identificar problemas
+
+### Importante
+- Nunca exclua migrações que já foram aplicadas no banco
+- Mantenha o arquivo `_journal.json` sincronizado
+- Em caso de dúvida, use `npm run db:check` para verificar o estado das migrações

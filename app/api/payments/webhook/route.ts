@@ -1,12 +1,50 @@
-import { db } from "@/db/drizzle";
-import { invoices, subscriptions, users, subscriptionPlans } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { headers } from "next/headers";
+import { db } from "@/db/drizzle";
+import { subscriptions, users, subscriptionPlans, invoices } from "@/db/schema";
+import { eq, and, sql } from "drizzle-orm";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+
+type CheckoutMetadata = {
+  userId: string;
+  email: string;
+  subscription: string;
+  isUpgrade?: string;
+};
+
+type SubscriptionData = {
+  subscriptionId: string;
+  userId: string | undefined;
+  email: string | undefined;
+  status: string | undefined;
+  stripeUserId: string | undefined;
+  planId: string | undefined;
+  currentPeriodStart: Date | undefined;
+  currentPeriodEnd: Date | undefined;
+  defaultPaymentMethodId: string | undefined;
+  startDate: string | undefined;
+  createdTime: Date;
+  previousPlanId: string | undefined;
+  planChangedAt: Date | undefined;
+  canceledAt: Date | undefined;
+};
+
+type InvoiceData = {
+  invoiceId: string;
+  subscriptionId: string | undefined;
+  amountPaid: string | undefined;
+  amountDue: string | undefined;
+  currency: string | undefined;
+  status: string | undefined;
+  userId: string | undefined;
+  email: string | undefined;
+  periodStart: Date | undefined;
+  periodEnd: Date | undefined;
+  paymentIntent: string | undefined;
+};
 
 export async function POST(req: Request) {
   try {
@@ -245,11 +283,29 @@ async function getCustomerEmail(customerId: string): Promise<string | null> {
   }
 }
 
+type SubscriptionEventData = {
+  previous_attributes?: {
+    items?: {
+      data: Array<{ price: { id: string } }>;
+    };
+  };
+  object: Stripe.Subscription & {
+    items: {
+      data: Array<{ price: { id: string } }>;
+    };
+  };
+};
+
+// Helper function to safely get price ID from subscription items
+function getPriceIdFromSubscription(subscription: Stripe.Subscription): string | undefined {
+  return subscription.items?.data?.[0]?.price?.id ?? undefined;
+}
+
 async function handleSubscriptionEvent(
   event: Stripe.Event,
   type: "created" | "updated" | "deleted"
 ) {
-  const subscription = event.data.object as Stripe.Subscription;
+  const subscription = (event.data as any).object as Stripe.Subscription;
   const customerEmail = await getCustomerEmail(subscription.customer as string);
 
   console.log('📝 Subscription event details:', {
@@ -261,7 +317,53 @@ async function handleSubscriptionEvent(
     defaultPaymentMethod: subscription.default_payment_method
   });
 
+  // Verifica se é uma mudança de plano comparando com os dados anteriores
+  if (type === "updated" && (event.data as SubscriptionEventData).previous_attributes) {
+    const previousAttributes = (event.data as SubscriptionEventData).previous_attributes;
+    const previousPlan = previousAttributes?.items?.data[0]?.price.id;
+    const newPlan = (event.data as SubscriptionEventData).object.items.data[0]?.price.id;
+    
+    if (previousPlan && newPlan && previousPlan !== newPlan) {
+      console.log('🔄 Plan change detected:', {
+        from: previousPlan,
+        to: newPlan,
+        subscriptionId: subscription.id,
+        timestamp: new Date().toISOString()
+      });
+
+      // Busca a assinatura antiga e atualiza seu status
+      const oldSubscription = await db
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.planId, previousPlan))
+        .limit(1);
+
+      if (oldSubscription.length > 0) {
+        await db
+          .update(subscriptions)
+          .set({
+            status: "cancelled",
+            canceledAt: new Date()
+          })
+          .where(eq(subscriptions.planId, previousPlan));
+      }
+
+      // Atualiza a nova assinatura com as informações de mudança de plano
+      await db
+        .update(subscriptions)
+        .set({
+          previousPlanId: previousPlan,
+          planChangedAt: new Date(),
+          status: subscription.status,
+          currentPeriodStart: new Date(subscription.current_period_start * 1000),
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000)
+        })
+        .where(eq(subscriptions.subscriptionId, subscription.id));
+    }
+  }
+
   if (!customerEmail) {
+    console.error('❌ Customer email not found:', subscription.customer);
     return NextResponse.json({
       status: 500,
       error: "Customer email could not be fetched",
@@ -279,27 +381,32 @@ async function handleSubscriptionEvent(
       .limit(1);
 
     if (user.length > 0 && user[0].userId) {
-      userId = user[0].userId;
+      const userIdString = user[0].userId;
+      userId = userIdString;
       console.log('✅ Found userId by email:', userId);
       
       // Atualiza os metadados da assinatura no Stripe com o userId
       await stripe.subscriptions.update(subscription.id, {
-        metadata: { ...subscription.metadata, userId }
+        metadata: { ...subscription.metadata, userId: userIdString }
       });
     }
   }
 
-  const subscriptionData = {
+  const subscriptionData: SubscriptionData = {
     subscriptionId: subscription.id,
-    stripeUserId: subscription.customer as string,
-    status: subscription.status,
-    startDate: new Date(subscription.start_date * 1000).toISOString(),
-    planId: subscription.items.data[0]?.price.id,
-    userId: userId || "",
-    email: customerEmail,
-    defaultPaymentMethodId: subscription.default_payment_method as string,
-    currentPeriodStart: new Date(subscription.current_period_start * 1000),
-    currentPeriodEnd: new Date(subscription.current_period_end * 1000)
+    userId: userId || undefined,
+    email: customerEmail || undefined,
+    status: subscription.status || undefined,
+    stripeUserId: subscription.customer as string || undefined,
+    planId: getPriceIdFromSubscription(subscription) ?? undefined,
+    currentPeriodStart: subscription.current_period_start ? new Date(subscription.current_period_start * 1000) : undefined,
+    currentPeriodEnd: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : undefined,
+    defaultPaymentMethodId: subscription.default_payment_method as string || undefined,
+    startDate: subscription.start_date ? new Date(subscription.start_date * 1000).toISOString() : undefined,
+    createdTime: new Date(),
+    previousPlanId: type === "updated" && (event.data as SubscriptionEventData).previous_attributes?.items?.data?.[0]?.price?.id || undefined,
+    planChangedAt: type === "updated" && (event.data as SubscriptionEventData).previous_attributes?.items ? new Date() : undefined,
+    canceledAt: undefined
   };
 
   console.log('📝 Subscription data to save:', subscriptionData);
@@ -311,6 +418,23 @@ async function handleSubscriptionEvent(
       .from(subscriptions)
       .where(eq(subscriptions.subscriptionId, subscription.id))
       .limit(1);
+
+    // Validações adicionais para mudança de plano
+    if (type === "updated" && subscriptionData.previousPlanId) {
+      console.log('🔍 Validating plan change:', {
+        currentPlan: existingSubscription[0]?.planId,
+        newPlan: subscriptionData.planId,
+        previousPlan: subscriptionData.previousPlanId
+      });
+
+      // Garante que o plano anterior corresponde ao registrado
+      if (existingSubscription[0]?.planId !== subscriptionData.previousPlanId) {
+        console.warn('⚠️ Inconsistency in plan change:', {
+          recorded: existingSubscription[0]?.planId,
+          expected: subscriptionData.previousPlanId
+        });
+      }
+    }
 
     if (type === "deleted") {
       // Update subscriptions table
@@ -396,7 +520,10 @@ async function handleInvoiceEvent(
     currency: invoice.currency,
     metadata: invoice.metadata,
     invoiceId: invoice.id,
-    paymentIntent: invoice.payment_intent
+    paymentIntent: invoice.payment_intent,
+    subscription: invoice.subscription,
+    lines: invoice.lines?.data,
+    lineItemMetadata: invoice.lines?.data?.[0]?.metadata
   });
 
   if (!customerEmail) {
@@ -406,19 +533,84 @@ async function handleInvoiceEvent(
     });
   }
 
-  const invoiceData = {
+  // Busca o userId pelo email se não estiver nos metadados
+  let userId = invoice.metadata?.userId;
+  
+  // Se não encontrou nos metadados da invoice, tenta nos metadados da linha do item
+  if (!userId && invoice.lines?.data?.[0]?.metadata?.userId) {
+    userId = invoice.lines.data[0].metadata.userId;
+    console.log('✅ Found userId in line item metadata:', userId);
+  }
+
+  if (!userId) {
+    console.log('⚠️ No userId in metadata, searching by email:', customerEmail);
+    const user = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, customerEmail))
+      .limit(1);
+
+    if (user.length > 0 && user[0].userId) {
+      const userIdString = user[0].userId;
+      userId = userIdString;
+      console.log('✅ Found userId by email:', userId);
+      
+      // Atualiza os metadados da invoice no Stripe
+      await stripe.invoices.update(invoice.id, {
+        metadata: { ...invoice.metadata, userId: userIdString }
+      });
+      console.log('✅ Invoice metadata updated with userId');
+    }
+  }
+
+  // Se ainda não encontrou o userId, tenta buscar pela subscription
+  if (!userId && invoice.subscription) {
+    console.log('⚠️ Searching userId by subscription:', invoice.subscription);
+    const subscription = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.subscriptionId, invoice.subscription as string))
+      .limit(1);
+
+    if (subscription.length > 0 && subscription[0].userId) {
+      const userIdString = subscription[0].userId;
+      userId = userIdString;
+      console.log('✅ Found userId by subscription:', userId);
+      
+      // Atualiza os metadados da invoice no Stripe
+      await stripe.invoices.update(invoice.id, {
+        metadata: { ...invoice.metadata, userId: userIdString }
+      });
+      console.log('✅ Invoice metadata updated with userId from subscription');
+    }
+  }
+
+  const invoiceData: InvoiceData = {
     invoiceId: invoice.id,
-    subscriptionId: invoice.subscription as string,
+    subscriptionId: invoice.subscription as string ?? undefined,
     amountPaid: status === "succeeded" ? String(invoice.amount_paid / 100) : undefined,
     amountDue: status === "failed" ? String(invoice.amount_due / 100) : undefined,
-    currency: invoice.currency,
-    status,
-    userId: invoice.metadata?.userId,
-    email: customerEmail,
-    periodStart: new Date(invoice.period_start * 1000),
-    periodEnd: new Date(invoice.period_end * 1000),
-    paymentIntent: invoice.payment_intent as string
+    currency: invoice.currency ?? undefined,
+    status: status ?? undefined,
+    userId: userId || undefined,
+    email: customerEmail ?? undefined,
+    periodStart: invoice.lines?.data?.[0]?.period?.start ? new Date(invoice.lines.data[0].period.start * 1000) : 
+                (invoice.period_start ? new Date(invoice.period_start * 1000) : undefined),
+    periodEnd: invoice.lines?.data?.[0]?.period?.end ? new Date(invoice.lines.data[0].period.end * 1000) : 
+              (invoice.period_end ? new Date(invoice.period_end * 1000) : undefined),
+    paymentIntent: (invoice.payment_intent as string) ?? undefined
   };
+
+  console.log('📊 Invoice periods:', {
+    fromLineItem: {
+      start: invoice.lines?.data?.[0]?.period?.start ? new Date(invoice.lines.data[0].period.start * 1000) : null,
+      end: invoice.lines?.data?.[0]?.period?.end ? new Date(invoice.lines.data[0].period.end * 1000) : null
+    },
+    fromInvoice: {
+      start: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
+      end: invoice.period_end ? new Date(invoice.period_end * 1000) : null
+    }
+  });
 
   try {
     // Verifica se a fatura já existe
@@ -429,18 +621,34 @@ async function handleInvoiceEvent(
       .limit(1);
 
     if (existingInvoice.length > 0) {
-      console.log('✅ Invoice already exists, updating status');
-      // Atualiza a fatura existente
+      console.log('✅ Invoice already exists, updating status and data');
+      // Atualiza a fatura existente com todos os campos relevantes
       const updatedInvoice = await db
         .update(invoices)
         .set({
           status,
           amountPaid: invoiceData.amountPaid,
           amountDue: invoiceData.amountDue,
-          paymentIntent: invoiceData.paymentIntent
+          paymentIntent: invoiceData.paymentIntent,
+          userId: invoiceData.userId,
+          email: invoiceData.email,
+          subscriptionId: invoiceData.subscriptionId
         })
         .where(eq(invoices.invoiceId, invoice.id))
         .returning();
+
+      console.log('✅ Invoice updated with data:', {
+        invoiceId: invoice.id,
+        updatedFields: {
+          status,
+          amountPaid: invoiceData.amountPaid,
+          amountDue: invoiceData.amountDue,
+          paymentIntent: invoiceData.paymentIntent,
+          userId: invoiceData.userId,
+          email: invoiceData.email,
+          subscriptionId: invoiceData.subscriptionId
+        }
+      });
 
       return NextResponse.json({
         status: 200,
@@ -470,149 +678,185 @@ async function handleInvoiceEvent(
   }
 }
 
-async function handleCheckoutSessionCompleted(event: Stripe.Event) {
-  const session = event.data.object as Stripe.Checkout.Session;
-  const metadata: any = session?.metadata;
+/**
+ * Funções auxiliares para manipulação de assinaturas
+ */
 
-  console.log('🏷️ Session metadata:', metadata);
-  console.log('📦 Session details:', {
-    subscription: session.subscription,
-    invoice: session.invoice,
-    customer: session.customer
+/**
+ * Busca a assinatura ativa atual do usuário
+ * @param userId ID do usuário
+ * @returns A assinatura ativa ou undefined
+ */
+async function getCurrentActiveSubscription(userId: string) {
+  const activeSubscription = await db
+    .select()
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.userId, userId),
+        eq(subscriptions.status, "active"),
+        // Garante que não está cancelada (is null em SQL)
+        sql`${subscriptions.canceledAt} is null`
+      )
+    )
+    .orderBy(sql`${subscriptions.createdTime} desc`)  // Pega a mais recente em caso de inconsistência
+    .limit(1);
+
+  return activeSubscription[0];
+}
+
+/**
+ * Cancela uma assinatura tanto no Stripe quanto no banco de dados
+ * @param subscriptionId ID da assinatura no Stripe
+ * @param dbSubscriptionId ID da assinatura no banco de dados
+ */
+async function cancelSubscription(subscriptionId: string, dbSubscriptionId: number) {
+  console.log('🔄 Cancelando assinatura:', { subscriptionId, dbSubscriptionId });
+  
+  const cancelTime = new Date();
+
+  // Cancela no Stripe
+  try {
+    const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+    if (stripeSubscription.status === 'active') {
+      await stripe.subscriptions.cancel(subscriptionId);
+      console.log('✅ Assinatura cancelada no Stripe');
+    }
+  } catch (error: any) {
+    if (error.code !== 'resource_missing') {
+      console.error('❌ Erro ao cancelar assinatura no Stripe:', error);
+      throw error;
+    }
+  }
+
+  // Cancela no banco
+  await db
+    .update(subscriptions)
+    .set({
+      status: "cancelled",
+      canceledAt: cancelTime
+    })
+    .where(eq(subscriptions.id, dbSubscriptionId));
+  
+  console.log('✅ Assinatura cancelada no banco de dados');
+}
+
+/**
+ * Processa a migração de plano, garantindo que apenas um plano fique ativo
+ * @param oldSubscription Assinatura atual
+ * @param newSubscriptionId ID da nova assinatura
+ * @param metadata Metadados do checkout
+ */
+async function handlePlanMigration(
+  oldSubscription: any,
+  newSubscriptionId: string,
+  metadata: CheckoutMetadata
+) {
+  console.log('🔄 Processando migração de plano:', {
+    oldSubscriptionId: oldSubscription.subscriptionId,
+    newSubscriptionId,
+    isUpgrade: metadata.isUpgrade
   });
 
-  if (metadata?.subscription === "true") {
-    // This is for subscription payments
-    const subscriptionId = session.subscription;
-    try {
-      // Update subscription metadata in Stripe
-      const subscription = await stripe.subscriptions.update(subscriptionId as string, { metadata });
+  // Primeiro, cancela qualquer outra assinatura ativa do usuário
+  const allActiveSubscriptions = await db
+    .select()
+    .from(subscriptions)
+    .where(
+      and(
+        eq(subscriptions.userId, metadata.userId),
+        eq(subscriptions.status, "active")
+      )
+    );
 
-      // Busca a fatura no Stripe para obter period_start e period_end
-      const invoice = await stripe.invoices.retrieve(session.invoice as string);
-      console.log('📅 Invoice completa:', invoice);
-      console.log('📅 Invoice periods:', {
-        periodStart: invoice.period_start,
-        periodEnd: invoice.period_end,
-        billingReason: invoice.billing_reason,
-        created: invoice.created,
-        subscriptionProrationDate: invoice.subscription_proration_date
-      });
+  console.log(`🔍 Encontradas ${allActiveSubscriptions.length} assinaturas ativas para cancelar`);
 
-      // Busca a subscription para obter os períodos corretos
-      const subscriptionDetails = await stripe.subscriptions.retrieve(subscriptionId as string);
-      console.log('🔄 Subscription periods:', {
-        currentPeriodStart: subscriptionDetails.current_period_start,
-        currentPeriodEnd: subscriptionDetails.current_period_end
-      });
+  // Cancela todas as assinaturas ativas, exceto a nova
+  for (const subscription of allActiveSubscriptions) {
+    if (subscription.subscriptionId !== newSubscriptionId) {
+      await cancelSubscription(subscription.subscriptionId, subscription.id);
+    }
+  }
+}
 
-      // Verify if invoice exists before updating
-      const existingInvoice = await db
-        .select()
-        .from(invoices)
-        .where(eq(invoices.invoiceId, session.invoice as string))
-        .limit(1);
+async function handleCheckoutSessionCompleted(event: Stripe.Event) {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const metadata = session.metadata as CheckoutMetadata;
 
-      if (existingInvoice.length === 0) {
-        console.log('⚠️ Invoice not found, creating new invoice record');
-        // Create new invoice record if it doesn't exist
-        await db
-          .insert(invoices)
-          .values({
-            invoiceId: session.invoice as string,
-            subscriptionId: session.subscription as string,
-            userId: metadata?.userId,
-            email: metadata?.email,
-            status: 'succeeded',
-            amountPaid: String(session.amount_total! / 100),
-            currency: session.currency,
-            periodStart: new Date(subscriptionDetails.current_period_start * 1000),
-            periodEnd: new Date(subscriptionDetails.current_period_end * 1000),
-            paymentIntent: invoice.payment_intent as string
-          });
-      } else {
-        console.log('✅ Updating existing invoice');
-        // Update existing invoice
-        await db
-          .update(invoices)
-          .set({ 
-            userId: metadata?.userId,
-            periodStart: new Date(subscriptionDetails.current_period_start * 1000),
-            periodEnd: new Date(subscriptionDetails.current_period_end * 1000),
-            paymentIntent: invoice.payment_intent as string
-          })
-          .where(eq(invoices.invoiceId, session.invoice as string));
-      }
+  console.log('🔍 Checkout session completed:', {
+    sessionId: session.id,
+    customerId: session.customer,
+    metadata
+  });
 
-      // Update user's subscription status
+  if (!metadata?.userId || !metadata?.email) {
+    console.error('❌ Metadados obrigatórios ausentes:', metadata);
+    throw new Error('Metadados obrigatórios ausentes');
+  }
+
+  try {
+    // Busca os detalhes da nova assinatura
+    const newSubscriptionDetails = await stripe.subscriptions.retrieve(session.subscription as string);
+    
+    // Busca assinatura ativa existente
+    const currentActiveSubscription = await getCurrentActiveSubscription(metadata.userId);
+
+    // Se for uma migração de plano e existir uma assinatura ativa
+    if (metadata.isUpgrade === "true" && currentActiveSubscription) {
+      await handlePlanMigration(currentActiveSubscription, newSubscriptionDetails.id, metadata);
+    } else {
+      // Mesmo que não seja upgrade, precisamos garantir que não há outras assinaturas ativas
+      await handlePlanMigration(null, newSubscriptionDetails.id, metadata);
+    }
+
+    // Prepara os dados da nova assinatura
+    const subscriptionData: SubscriptionData = {
+      subscriptionId: newSubscriptionDetails.id,
+      userId: metadata.userId,
+      email: metadata.email,
+      status: newSubscriptionDetails.status,
+      stripeUserId: session.customer as string,
+      planId: getPriceIdFromSubscription(newSubscriptionDetails) ?? undefined,
+      currentPeriodStart: newSubscriptionDetails.current_period_start ? new Date(newSubscriptionDetails.current_period_start * 1000) : undefined,
+      currentPeriodEnd: newSubscriptionDetails.current_period_end ? new Date(newSubscriptionDetails.current_period_end * 1000) : undefined,
+      defaultPaymentMethodId: (newSubscriptionDetails.default_payment_method as string) ?? undefined,
+      startDate: newSubscriptionDetails.start_date ? new Date(newSubscriptionDetails.start_date * 1000).toISOString() : undefined,
+      createdTime: new Date(),
+      // Usa o planId da assinatura atual como previousPlanId apenas se for uma migração
+      previousPlanId: metadata.isUpgrade === "true" && currentActiveSubscription?.planId ? currentActiveSubscription.planId : undefined,
+      planChangedAt: metadata.isUpgrade === "true" ? new Date() : undefined,
+      canceledAt: undefined
+    };
+
+    // Antes de inserir, verifica se já não existe uma assinatura com este ID
+    const existingSubscription = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.subscriptionId, newSubscriptionDetails.id))
+      .limit(1);
+
+    if (existingSubscription.length > 0) {
+      console.log('⚠️ Assinatura já existe, atualizando dados');
       await db
-        .update(users)
-        .set({ subscription: subscription.status })
-        .where(eq(users.userId, metadata?.userId));
-
-      return NextResponse.json({
-        status: 200,
-        message: "Subscription metadata updated successfully",
-      });
-    } catch (error) {
-      console.error("Error updating subscription metadata:", error);
-      return NextResponse.json({
-        status: 500,
-        error: "Error updating subscription metadata",
-      });
+        .update(subscriptions)
+        .set(subscriptionData)
+        .where(eq(subscriptions.subscriptionId, newSubscriptionDetails.id));
+    } else {
+      console.log('📝 Criando nova assinatura');
+      await db
+        .insert(subscriptions)
+        .values(subscriptionData);
     }
-  } else {
-    // This is for one-time payments
-    const dateTime = new Date(session.created * 1000).toISOString();
-    try {
-      // Fetch user
-      // const user = await db.query.users.findFirst({
-      //   where: eq(users.userId, metadata?.userId),
-      // });
 
-      // if (!user) {
-      //   throw new Error("User not found");
-      // }
+    console.log('✅ Assinatura processada com sucesso');
 
-      // const paymentData = {
-      //   userId: metadata?.userId,
-      //   stripeId: session.id,
-      //   email: metadata?.email,
-      //   amount: String(session.amount_total! / 100),
-      //   customerDetails: JSON.stringify(session.customer_details),
-      //   paymentIntent: session.payment_intent as string,
-      //   paymentTime: dateTime,
-      //   currency: session.currency,
-      // };
-
-      // // Insert payment
-      // const insertedPayment = await db
-      //   .insert(payments)
-      //   .values(paymentData)
-      //   .returning();
-
-      // // Calculate and update user credits
-      // const currentCredits = Number(user.credits || 0);
-      // const updatedCredits = currentCredits + (session.amount_total || 0) / 100;
-
-      // const updatedUser = await db
-      //   .update(users)
-      //   .set({ credits: String(updatedCredits) })
-      //   .where(eq(users.userId, metadata?.userId))
-      //   .returning();
-
-      return NextResponse.json({
-        status: 200,
-        message: "Payment and credits updated successfully",
-        // updatedUser,
-      });
-    } catch (error) {
-      console.error("Error handling checkout session:", error);
-      return NextResponse.json({
-        status: 500,
-        error: String(error),
-      });
-    }
+    return NextResponse.json({
+      status: 200,
+      message: "Assinatura processada com sucesso",
+    });
+  } catch (error) {
+    console.error('❌ Erro ao processar assinatura:', error);
+    throw error;
   }
 }
 
