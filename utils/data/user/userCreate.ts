@@ -25,6 +25,7 @@ export const userCreate = async ({
       lastName: last_name,
       profileImageUrl: profile_image_url,
       userId: user_id,
+      status: 'active',
     }).returning();
 
     return result;

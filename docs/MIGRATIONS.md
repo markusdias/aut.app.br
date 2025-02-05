@@ -9,6 +9,64 @@ Este documento descreve o processo de gerenciamento de migrações do banco de d
 - O controle é feito pela tabela `drizzle_migrations`
 - O schema `drizzle` contém as tabelas de controle
 
+## Processo de Criação de Nova Migração
+
+### 1. Atualize o Schema
+Primeiro, atualize o arquivo `db/schema.ts` com as alterações desejadas. Por exemplo:
+
+```typescript
+// Antes
+export const users = pgTable("users", {
+  email: text("email"),
+});
+
+// Depois
+export const userStatusEnum = pgEnum('user_status', ['active', 'blocked']);
+export const users = pgTable("users", {
+  email: text("email"),
+  status: userStatusEnum("status").default('active').notNull(),
+});
+```
+
+### 2. Gere a Migração
+Use o drizzle-kit para gerar a migração automaticamente:
+
+```bash
+npm run db:generate
+```
+
+Isso irá:
+1. Comparar o schema atual com o estado do banco
+2. Gerar um arquivo SQL com as alterações necessárias
+3. Incluir statement-breakpoints para melhor controle
+
+### 3. Revise a Migração
+- Verifique o arquivo gerado em `db/migrations`
+- Adicione comentários explicativos
+- Certifique-se que o nome segue o padrão (ex: `0004_add_user_status.sql`)
+- ⚠️ IMPORTANTE: Verifique se não há duplicação de comandos de migrações anteriores
+- ⚠️ IMPORTANTE: Certifique-se de incluir o rollback para todas as alterações
+
+### 4. Teste a Migração
+```bash
+npm run db:migrate  # Aplica em desenvolvimento
+npm run db:check   # Verifica o estado
+```
+
+### 5. Commit
+Após os testes, faça commit de:
+1. Alterações no schema
+2. Nova migração
+3. Atualizações no _journal.json
+
+## Boas Práticas
+1. SEMPRE use o drizzle-kit para gerar migrações
+2. NUNCA modifique uma migração já executada
+3. Mantenha o versionamento sequencial
+4. Use nomes descritivos para as migrações
+5. Adicione comentários explicativos
+6. Teste em desenvolvimento antes de commitar
+
 ## Comandos Disponíveis
 
 ### Gerenciamento de Banco de Dados
@@ -121,12 +179,6 @@ npm run db:sync-plans
 6. Use `db:check` regularmente para identificar problemas
 7. Sempre use `--confirm` em comandos destrutivos
 8. Documente todas as alterações no banco
-
-## Processo de Criação de Nova Migração
-1. Use o drizzle-kit para gerar a migração
-2. Revise o arquivo gerado
-3. Teste a migração em ambiente de desenvolvimento
-4. Commit apenas após testes bem sucedidos
 
 ## Resolução de Problemas
 Se encontrar discrepâncias entre arquivos locais e estado do banco:
@@ -312,3 +364,26 @@ Ao limitar os snapshots ao inicial, evitamos que o sistema tente recriar estados
 - Nunca exclua migrações que já foram aplicadas no banco
 - Mantenha o arquivo `_journal.json` sincronizado
 - Em caso de dúvida, use `npm run db:check` para verificar o estado das migrações
+
+## Gerenciamento de Migrações
+
+### Verificação Obrigatória
+
+⚠️ ANTES de criar uma nova migração:
+
+1. **Verificar Numeração Existente**
+   ```bash
+   ls db/migrations
+   ```
+   - SEMPRE verifique as migrações existentes
+   - NUNCA repita números de migração
+   - Incremente a partir do último número encontrado
+
+2. **Conflitos de Numeração**
+   - Conflitos podem causar:
+     - Falhas na execução das migrações
+     - Inconsistência no banco de dados
+     - Perda de alterações importantes
+   - Em caso de conflito, PARE e revise
+
+### Padrão de Nomenclatura

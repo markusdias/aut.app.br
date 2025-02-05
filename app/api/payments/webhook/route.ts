@@ -4,6 +4,11 @@ import { headers } from "next/headers";
 import { db } from "@/db/drizzle";
 import { subscriptions, users, subscriptionPlans, invoices } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
+import {
+  sendSubscriptionCancelledNotification,
+  sendPaymentFailedNotification,
+  sendPlanChangedNotification
+} from '@/utils/notifications/sendNotifications';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -317,49 +322,13 @@ async function handleSubscriptionEvent(
     defaultPaymentMethod: subscription.default_payment_method
   });
 
-  // Verifica se é uma mudança de plano comparando com os dados anteriores
-  if (type === "updated" && (event.data as SubscriptionEventData).previous_attributes) {
-    const previousAttributes = (event.data as SubscriptionEventData).previous_attributes;
-    const previousPlan = previousAttributes?.items?.data[0]?.price.id;
-    const newPlan = (event.data as SubscriptionEventData).object.items.data[0]?.price.id;
-    
-    if (previousPlan && newPlan && previousPlan !== newPlan) {
-      console.log('🔄 Plan change detected:', {
-        from: previousPlan,
-        to: newPlan,
-        subscriptionId: subscription.id,
-        timestamp: new Date().toISOString()
-      });
-
-      // Busca a assinatura antiga e atualiza seu status
-      const oldSubscription = await db
-        .select()
-        .from(subscriptions)
-        .where(eq(subscriptions.planId, previousPlan))
-        .limit(1);
-
-      if (oldSubscription.length > 0) {
-        await db
-          .update(subscriptions)
-          .set({
-            status: "cancelled",
-            canceledAt: new Date()
-          })
-          .where(eq(subscriptions.planId, previousPlan));
-      }
-
-      // Atualiza a nova assinatura com as informações de mudança de plano
-      await db
-        .update(subscriptions)
-        .set({
-          previousPlanId: previousPlan,
-          planChangedAt: new Date(),
-          status: subscription.status,
-          currentPeriodStart: new Date(subscription.current_period_start * 1000),
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000)
-        })
-        .where(eq(subscriptions.subscriptionId, subscription.id));
-    }
+  // IMPORTANTE: Se for parte de uma migração de plano, não processa aqui
+  if (subscription.metadata?.isUpgrade === "true") {
+    console.log('⏭️ Ignorando evento de subscription pois é parte de uma migração de plano');
+    return NextResponse.json({
+      status: 200,
+      message: "Subscription event ignored - part of plan migration"
+    });
   }
 
   if (!customerEmail) {
@@ -409,8 +378,6 @@ async function handleSubscriptionEvent(
     canceledAt: undefined
   };
 
-  console.log('📝 Subscription data to save:', subscriptionData);
-
   try {
     // Verifica se a assinatura já existe
     const existingSubscription = await db
@@ -419,23 +386,51 @@ async function handleSubscriptionEvent(
       .where(eq(subscriptions.subscriptionId, subscription.id))
       .limit(1);
 
-    // Validações adicionais para mudança de plano
-    if (type === "updated" && subscriptionData.previousPlanId) {
-      console.log('🔍 Validating plan change:', {
-        currentPlan: existingSubscription[0]?.planId,
-        newPlan: subscriptionData.planId,
-        previousPlan: subscriptionData.previousPlanId
-      });
+    // Se for uma assinatura nova ou atualização
+    if (type === "created" || type === "updated") {
+      // Busca o usuário atual para verificar o status
+      const currentUser = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, customerEmail))
+        .limit(1);
 
-      // Garante que o plano anterior corresponde ao registrado
-      if (existingSubscription[0]?.planId !== subscriptionData.previousPlanId) {
-        console.warn('⚠️ Inconsistency in plan change:', {
-          recorded: existingSubscription[0]?.planId,
-          expected: subscriptionData.previousPlanId
+      // Se o usuário estiver bloqueado/banido/deletado, cancela a assinatura
+      if (currentUser[0]?.status === "blocked" || 
+          currentUser[0]?.status === "banned" || 
+          currentUser[0]?.status === "deleted") {
+        
+        // Cancela a assinatura no Stripe
+        await stripe.subscriptions.cancel(subscription.id);
+        
+        // Atualiza o status da assinatura no banco
+        await db
+          .update(subscriptions)
+          .set({
+            status: "cancelled",
+            canceledAt: new Date()
+          })
+          .where(eq(subscriptions.subscriptionId, subscription.id));
+
+        return NextResponse.json({
+          status: 200,
+          message: "Subscription cancelled - user is blocked/banned/deleted"
         });
       }
+
+      // Se o usuário estiver ativo, atualiza normalmente
+      await db
+        .update(users)
+        .set({ 
+          subscription: subscription.status,
+          status: "active"
+        })
+        .where(eq(users.email, customerEmail));
+
+      console.log('✅ Updated user subscription status:', subscription.status);
     }
 
+    // Se for um cancelamento
     if (type === "deleted") {
       // Update subscriptions table
       await db
@@ -443,6 +438,7 @@ async function handleSubscriptionEvent(
         .set({
           status: "cancelled",
           email: customerEmail,
+          canceledAt: new Date()
         })
         .where(eq(subscriptions.subscriptionId, subscription.id));
 
@@ -452,6 +448,19 @@ async function handleSubscriptionEvent(
         .set({ subscription: null })
         .where(eq(users.email, customerEmail));
 
+      // Verifica se é uma migração de plano
+      const isUpgrade = subscription.metadata?.isUpgrade === "true";
+      const hasNewPlan = subscription.metadata?.newPlanId != null;
+
+      // Só envia notificação de cancelamento se não for uma migração
+      if (userId && !isUpgrade && !hasNewPlan) {
+        await sendSubscriptionCancelledNotification({
+          userId,
+          email: customerEmail || "",
+          planId: getPriceIdFromSubscription(subscription) || ""
+        });
+      }
+
       return NextResponse.json({
         status: 200,
         message: "Subscription cancelled successfully",
@@ -459,7 +468,6 @@ async function handleSubscriptionEvent(
     }
 
     // Se a assinatura não existe e é um evento "created", insere
-    // Se já existe ou é um evento "updated", atualiza
     if (!existingSubscription.length && type === "created") {
       console.log('📝 Creating new subscription record');
       const insertedData = await db
@@ -467,30 +475,19 @@ async function handleSubscriptionEvent(
         .values(subscriptionData)
         .returning();
 
-      // Atualiza a tabela users com o status da assinatura
-      await db
-        .update(users)
-        .set({ subscription: subscriptionData.status })
-        .where(eq(users.email, customerEmail));
-
       return NextResponse.json({
         status: 200,
         message: "Subscription created successfully",
         data: insertedData,
       });
     } else {
+      // Se já existe, atualiza
       console.log('📝 Updating existing subscription record');
       const updatedData = await db
         .update(subscriptions)
         .set(subscriptionData)
         .where(eq(subscriptions.subscriptionId, subscription.id))
         .returning();
-
-      // Atualiza a tabela users com o status da assinatura
-      await db
-        .update(users)
-        .set({ subscription: subscriptionData.status })
-        .where(eq(users.email, customerEmail));
 
       return NextResponse.json({
         status: 200,
@@ -753,30 +750,117 @@ async function handlePlanMigration(
   metadata: CheckoutMetadata
 ) {
   console.log('🔄 Processando migração de plano:', {
-    oldSubscriptionId: oldSubscription.subscriptionId,
+    oldSubscriptionId: oldSubscription?.subscriptionId,
     newSubscriptionId,
     isUpgrade: metadata.isUpgrade
   });
 
-  // Primeiro, cancela qualquer outra assinatura ativa do usuário
-  const allActiveSubscriptions = await db
+  // Verifica o status do usuário antes de prosseguir
+  const currentUser = await db
+    .select()
+    .from(users)
+    .where(eq(users.userId, metadata.userId))
+    .limit(1);
+
+  // Se o usuário estiver bloqueado/banido/deletado, cancela a nova assinatura
+  if (currentUser[0]?.status === "blocked" || 
+      currentUser[0]?.status === "banned" || 
+      currentUser[0]?.status === "deleted") {
+    
+    // Cancela a nova assinatura no Stripe
+    await stripe.subscriptions.cancel(newSubscriptionId);
+    
+    // Atualiza o status da nova assinatura no banco
+    await db
+      .update(subscriptions)
+      .set({
+        status: "cancelled",
+        canceledAt: new Date()
+      })
+      .where(eq(subscriptions.subscriptionId, newSubscriptionId));
+
+    throw new Error(`Cannot migrate plan - user is ${currentUser[0]?.status}`);
+  }
+
+  // Inicia uma transação para garantir atomicidade
+  await db.transaction(async (tx) => {
+    // 1. Primeiro ativa a nova assinatura
+    await tx
+      .update(subscriptions)
+      .set({
+        status: "active",
+        canceledAt: null
+      })
+      .where(eq(subscriptions.subscriptionId, newSubscriptionId));
+
+    // 2. Depois cancela as antigas (exceto a nova)
+    await tx
+      .update(subscriptions)
+      .set({
+        status: "cancelled",
+        canceledAt: new Date()
+      })
+      .where(
+        and(
+          eq(subscriptions.userId, metadata.userId),
+          eq(subscriptions.status, "active"),
+          sql`subscription_id != ${newSubscriptionId}` // Não cancela a nova
+        )
+      );
+
+    // 3. Atualiza o status do usuário mantendo-o ativo
+    await tx
+      .update(users)
+      .set({ 
+        subscription: "active",
+        status: "active"
+      })
+      .where(eq(users.userId, metadata.userId));
+  });
+
+  // Após garantir a consistência no banco, trata as assinaturas no Stripe
+  const allOldSubscriptions = await db
     .select()
     .from(subscriptions)
     .where(
       and(
         eq(subscriptions.userId, metadata.userId),
-        eq(subscriptions.status, "active")
+        eq(subscriptions.status, "cancelled"),
+        sql`subscription_id != ${newSubscriptionId}`,
+        sql`canceled_at >= NOW() - INTERVAL '5 minutes'`
       )
     );
 
-  console.log(`🔍 Encontradas ${allActiveSubscriptions.length} assinaturas ativas para cancelar`);
+  // Cancela as antigas no Stripe
+  for (const subscription of allOldSubscriptions) {
+    try {
+      const stripeSubscription = await stripe.subscriptions.retrieve(subscription.subscriptionId);
+      
+      await stripe.subscriptions.update(subscription.subscriptionId, {
+        metadata: {
+          ...stripeSubscription.metadata,
+          isUpgrade: metadata.isUpgrade || "true",
+          newPlanId: newSubscriptionId
+        }
+      });
 
-  // Cancela todas as assinaturas ativas, exceto a nova
-  for (const subscription of allActiveSubscriptions) {
-    if (subscription.subscriptionId !== newSubscriptionId) {
-      await cancelSubscription(subscription.subscriptionId, subscription.id);
+      await stripe.subscriptions.cancel(subscription.subscriptionId);
+      console.log('✅ Assinatura antiga cancelada no Stripe:', subscription.subscriptionId);
+    } catch (error) {
+      console.error('❌ Erro ao cancelar assinatura no Stripe:', error);
     }
   }
+
+  // Envia notificação de mudança de plano
+  const newSubscription = await stripe.subscriptions.retrieve(newSubscriptionId);
+  await sendPlanChangedNotification({
+    userId: metadata.userId,
+    email: metadata.email,
+    oldPlanId: oldSubscription?.planId || "",
+    newPlanId: getPriceIdFromSubscription(newSubscription) || "",
+    isUpgrade: metadata.isUpgrade || "false",
+    nextBillingDate: new Date(newSubscription.current_period_end * 1000)
+  });
 }
 
 async function handleCheckoutSessionCompleted(event: Stripe.Event) {
@@ -797,6 +881,21 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
   try {
     // Busca os detalhes da nova assinatura
     const newSubscriptionDetails = await stripe.subscriptions.retrieve(session.subscription as string);
+    
+    // Verifica se esta assinatura já foi processada
+    const processedSubscription = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.subscriptionId, newSubscriptionDetails.id))
+      .limit(1);
+
+    if (processedSubscription.length > 0 && processedSubscription[0].status === "active") {
+      console.log('⚠️ Esta assinatura já foi processada e está ativa');
+      return NextResponse.json({
+        status: 200,
+        message: "Subscription already processed"
+      });
+    }
     
     // Busca assinatura ativa existente
     const currentActiveSubscription = await getCurrentActiveSubscription(metadata.userId);

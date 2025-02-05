@@ -1,4 +1,7 @@
-import { pgTable, serial, text, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, boolean, jsonb, pgEnum } from "drizzle-orm/pg-core";
+
+// Define o enum para status do usuário
+export const userStatusEnum = pgEnum('user_status', ['active', 'blocked', 'banned', 'deleted']);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -11,6 +14,8 @@ export const users = pgTable("users", {
   userId: text("user_id").unique(),
   subscription: text("subscription"),
   credits: text("credits"),
+  status: userStatusEnum("status").default('active').notNull(),
+  deletedAt: timestamp("deleted_at"),
 });
 
 

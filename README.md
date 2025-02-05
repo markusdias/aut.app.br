@@ -705,3 +705,155 @@ O sistema mantém logs detalhados em cada etapa:
    - Implementar métricas
    - Alertas de erros
    - Dashboard de status
+
+## Webhooks do Clerk
+
+### Visão Geral
+
+O sistema utiliza webhooks do Clerk para manter sincronização em tempo real com eventos relacionados aos usuários. Os eventos são processados através do endpoint `/api/auth/webhook/route.ts`.
+
+### Eventos Tratados
+
+1. **user.created**
+   - Disparado quando um novo usuário é criado
+   - Cria registro do usuário no banco de dados
+   - Campos processados:
+     - `email`: Email principal do usuário
+     - `first_name`: Nome
+     - `last_name`: Sobrenome
+     - `profile_image_url`: URL da foto de perfil
+     - `user_id`: ID único do usuário
+
+2. **user.updated**
+   - Disparado quando informações do usuário são atualizadas
+   - Atualiza dados básicos do usuário
+   - Trata mudanças de status:
+     - **Bloqueio**: Quando `locked: true`
+       - Atualiza status para "blocked"
+       - Cancela assinaturas ativas
+       - Registra tempo de bloqueio (`lockout_expires_in_seconds`)
+     - **Desbloqueio**: Quando `locked: false` e `banned: false`
+       - Restaura status para "active" se estava bloqueado/banido
+       - Não restaura assinaturas automaticamente
+       - Usuário precisa assinar novamente
+     - **Banimento**: Quando `banned: true`
+       - Atualiza status para "banned"
+       - Cancela assinaturas ativas
+
+3. **user.deleted**
+   - Disparado quando um usuário é excluído
+   - Atualiza status para "deleted"
+   - Cancela automaticamente assinaturas ativas
+
+### Configuração
+
+1. **Variáveis de Ambiente**
+   ```env
+   CLERK_WEBHOOK_SECRET=seu_webhook_secret
+   ```
+
+2. **Headers Necessários**
+   - `svix-id`: ID único do evento
+   - `svix-timestamp`: Timestamp do evento
+   - `svix-signature`: Assinatura para verificação
+
+### Fluxo de Processamento
+
+1. **Verificação de Segurança**
+   - Validação do webhook secret
+   - Verificação dos headers obrigatórios
+   - Validação da assinatura do evento
+
+2. **Processamento do Evento**
+   - Identificação do tipo de evento
+   - Execução da lógica específica
+   - Atualização do banco de dados
+   - Logs detalhados para auditoria
+
+3. **Ações Automáticas**
+   - Cancelamento de assinaturas quando necessário
+   - Atualização de status do usuário
+   - Registro de logs
+   - Tratamento de erros
+
+### Respostas
+
+1. **Sucesso**
+   ```json
+   {
+     "status": 200,
+     "message": "User [status] and subscriptions cancelled"
+   }
+   ```
+   ou
+   ```json
+   {
+     "status": 200,
+     "message": "User unblocked and status restored to active"
+   }
+   ```
+   ou
+   ```json
+   {
+     "status": 200,
+     "message": "User info [inserted|updated]"
+   }
+   ```
+
+2. **Erro**
+   ```json
+   {
+     "status": 400,
+     "message": "Mensagem de erro específica"
+   }
+   ```
+
+### Integração com Middleware
+
+O middleware da aplicação verifica o status do usuário em cada requisição protegida:
+
+1. **Verificação de Status**
+   - Consulta status atual do usuário
+   - Redireciona para logout se bloqueado/banido/excluído
+   - Mantém segurança em tempo real
+
+### Logs e Monitoramento
+
+1. **Logs Detalhados**
+   ```typescript
+   {
+     userId: string,
+     email: string,
+     isLocked: boolean,
+     isBanned: boolean,
+     lockoutExpiresIn: number | null,
+     timestamp: string
+   }
+   ```
+
+2. **Cenários Monitorados**
+   - Bloqueio de usuário
+   - Desbloqueio de usuário
+   - Banimento
+   - Deleção
+   - Falhas em cancelamento de assinatura
+
+### Boas Práticas
+
+1. **Segurança**
+   - Mantenha o webhook secret seguro
+   - Valide todos os eventos recebidos
+   - Implemente logs detalhados
+   - Monitore tentativas de acesso bloqueadas
+
+2. **Performance**
+   - Processe eventos de forma assíncrona
+   - Implemente retry em caso de falhas
+   - Monitore tempos de resposta
+   - Otimize consultas ao banco
+
+3. **Manutenção**
+   - Mantenha logs organizados
+   - Monitore eventos não tratados
+   - Atualize documentação regularmente
+   - Revise políticas de segurança

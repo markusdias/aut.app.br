@@ -77,4 +77,175 @@
 ### Média Prioridade
 - [ ] Criar diagramas de sequência
 - [ ] Documentar decisões técnicas
-- [ ] Criar guia de desenvolvimento 
+- [ ] Criar guia de desenvolvimento
+
+# TODO - Melhorias e Implementações Pendentes
+
+## Prioridade Alta
+
+### 1. Notificações ao Usuário
+- [ ] Implementar sistema de notificações para:
+  - Cancelamento de assinatura
+  - Falha em pagamentos
+  - Bloqueio/banimento de conta
+  - Conclusão de mudança de plano
+  - Expiração próxima da assinatura
+- [ ] Definir templates de emails
+- [ ] Implementar fila de processamento de notificações
+- [ ] Logging de notificações enviadas
+
+### 2. Testes Automatizados
+- [ ] Implementar testes unitários
+  - Handlers de webhooks
+  - Funções de processamento
+  - Validações de dados
+- [ ] Implementar testes de integração
+  - Fluxo completo de assinaturas
+  - Webhooks do Clerk e Stripe
+  - Atualizações de banco de dados
+- [ ] Implementar testes end-to-end
+  - Fluxos de usuário completos
+  - Cenários de erro
+- [ ] Configurar CI/CD para testes
+
+### 3. Monitoramento
+- [ ] Implementar métricas de:
+  - Taxa de falha de pagamentos
+  - Taxa de cancelamentos
+  - Tempo de processamento de webhooks
+  - Uso de recursos
+- [ ] Configurar alertas para:
+  - Falhas críticas
+  - Thresholds de performance
+  - Anomalias em métricas
+- [ ] Dashboard de monitoramento em tempo real
+
+## Prioridade Média
+
+### 4. Admin Interface
+- [ ] Desenvolver interface para:
+  - Gerenciamento de usuários
+  - Visualização de logs
+  - Forçar sincronização de dados
+  - Override manual de status
+- [ ] Implementar controle de acesso
+- [ ] Logging de ações administrativas
+
+### 5. Logs de Auditoria
+- [ ] Implementar sistema robusto de auditoria
+  - Identificação de ator (admin/sistema)
+  - Timestamps precisos
+  - Histórico completo de mudanças
+- [ ] Interface de consulta de logs
+- [ ] Exportação de logs
+- [ ] Retenção e rotação de logs
+
+### 6. Retry de Webhooks
+- [ ] Implementar mecanismo de retry
+- [ ] Tratamento de webhooks duplicados
+- [ ] Fila de processamento assíncrono
+- [ ] Monitoramento de falhas de retry
+
+### 7. Relatórios
+- [ ] Implementar endpoints para:
+  - Usuários ativos/inativos
+  - Histórico de mudanças de plano
+  - Métricas de retenção
+  - Relatórios financeiros
+- [ ] Exportação em diferentes formatos
+- [ ] Agendamento de relatórios
+- [ ] Customização de relatórios
+
+### 8. Documentação
+- [ ] Expandir documentação:
+  - Detalhamento de webhooks
+  - Fluxogramas de processos
+  - Guias de troubleshooting
+  - Documentação de APIs
+- [ ] Manter documentação atualizada
+- [ ] Criar exemplos de uso
+
+### 9. Recuperação de Dados
+- [ ] Implementar:
+  - Sistema de backup
+  - Procedimentos de restauração
+  - Sincronização manual
+  - Verificação de integridade
+
+### 10. Rate Limiting
+- [ ] Implementar proteções:
+  - Limite de requisições por IP
+  - Proteção contra DoS
+  - Controle de uso de API
+- [ ] Monitoramento de abusos
+- [ ] Blacklist automática
+
+### 11. Migração do Serviço de Email para Produção
+- [ ] Migrar de Resend para Amazon SES:
+  - Análise de custos e volume de emails
+  - Configuração do SES na AWS
+  - Implementação do novo provider
+  - Testes de entrega e performance
+  - Monitoramento e métricas
+
+#### Etapas da Migração
+1. **Preparação**
+   - [ ] Criar conta AWS e configurar SES
+   - [ ] Verificar domínios e emails
+   - [ ] Solicitar aumento de limites se necessário
+   - [ ] Configurar monitoramento no CloudWatch
+
+2. **Implementação**
+   - [ ] Criar nova classe de serviço usando AWS SDK
+   - [ ] Manter interface atual de templates
+   - [ ] Implementar logs e métricas
+   - [ ] Configurar retentativas de envio
+
+3. **Testes**
+   - [ ] Testar em ambiente de staging
+   - [ ] Validar taxas de entrega
+   - [ ] Testar volumes maiores
+   - [ ] Verificar tempos de resposta
+
+4. **Produção**
+   - [ ] Estratégia de migração gradual
+   - [ ] Monitoramento inicial intensivo
+   - [ ] Documentação do novo sistema
+   - [ ] Treinamento da equipe de suporte
+
+#### Benefícios Esperados
+- Redução significativa de custos
+- Maior escalabilidade
+- Melhor monitoramento
+- Integração com outros serviços AWS
+- Métricas mais detalhadas
+
+#### Métricas de Sucesso
+- Taxa de entrega > 98%
+- Latência < 100ms
+- Custo por email reduzido
+- Zero perda de emails
+- Rastreamento completo
+
+## Notas de Implementação
+- Implementar melhorias de forma gradual
+- Priorizar itens críticos para o negócio
+- Manter documentação atualizada
+- Realizar testes adequados antes de cada deploy
+- Coletar feedback dos usuários
+
+## Processo de Atualização
+1. Criar branch específica para cada melhoria
+2. Desenvolver e testar localmente
+3. Revisar código (code review)
+4. Testar em ambiente de staging
+5. Deploy em produção
+6. Monitorar após deploy
+7. Atualizar documentação
+
+## Métricas de Sucesso
+- Redução de tickets de suporte
+- Melhoria em métricas de satisfação
+- Redução de tempo de resolução de problemas
+- Aumento na detecção precoce de issues
+- Melhoria na qualidade do código 

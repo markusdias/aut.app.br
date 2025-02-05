@@ -249,125 +249,131 @@ export class DatabaseManager {
     }
   }
 
+  private async executeMigration(sql: string, hash: string): Promise<void> {
+    console.log(`\n📦 Aplicando migração ${hash}...`);
+    
+    // Primeiro separa o SQL do rollback
+    const [migrationSql] = sql.split('---- ROLLBACK ----');
+    
+    // Remove comentários
+    const cleanSql = migrationSql
+      .split('\n')
+      .filter(line => !line.trim().startsWith('--')) // Remove comentários
+      .join('\n')
+      .trim();
+    
+    // Split SQL into statements using statement-breakpoint
+    const statements = cleanSql
+      .split('--> statement-breakpoint')
+      .map(stmt => stmt.trim())
+      .filter(stmt => stmt.length > 0)
+      .flatMap(stmt => stmt.split(';').map(s => s.trim()).filter(s => s.length > 0))
+      .map(stmt => stmt + ';');
+    
+    console.log(`\n📝 Encontrados ${statements.length} statements para executar:\n`);
+    
+    // Log each statement
+    statements.forEach((stmt, index) => {
+      console.log(`🔹 Statement ${index + 1}:\n${stmt}\n`);
+    });
+
+    // Execute each statement separately
+    for (const statement of statements) {
+      try {
+        console.log(`🔄 Executando statement:\n${statement}`);
+        await this.sql.unsafe(statement);
+        console.log('✅ Statement executado com sucesso\n');
+      } catch (error) {
+        console.error(`❌ Erro ao executar statement:\n${error}`);
+        throw error;
+      }
+    }
+
+    // Registra a migração
+    await this.sql`
+      INSERT INTO drizzle_migrations (hash)
+      VALUES (${hash})
+    `;
+
+    console.log(`✅ Migração ${hash} aplicada com sucesso!`);
+  }
+
+  private getLocalMigrations(): string[] {
+    const migrationsDir = path.join(process.cwd(), "db", "migrations");
+    return fs.readdirSync(migrationsDir)
+      .filter(file => file.endsWith(".sql"))
+      .sort();
+  }
+
+  private getHashFromFilename(filename: string): string {
+    return filename.replace(".sql", "");
+  }
+
   async migrate(isProd = false) {
+    console.log('\n🚀 Iniciando migração...');
+    console.log(`📊 Ambiente: ${isProd ? 'production' : 'development'}`);
+
+    // Verifica permissões
+    console.log('🔑 Verificando permissões...');
+    await this.checkPermissions();
+    console.log('✅ Permissões verificadas\n');
+
+    // Se for produção, verifica confirmação
+    if (isProd && process.env.CONFIRM_PRODUCTION_MIGRATION !== 'YES_I_KNOW_WHAT_I_AM_DOING') {
+      throw new Error('❌ ATENÇÃO: Tentativa de migração em produção sem confirmação explícita. Para executar em produção, defina CONFIRM_PRODUCTION_MIGRATION=\'YES_I_KNOW_WHAT_I_AM_DOING\'');
+    }
+
     try {
-      // Valida ambiente de produção
-      if (isProd) {
-        const confirmation = process.env.CONFIRM_PRODUCTION_MIGRATION;
-        if (confirmation !== "YES_I_KNOW_WHAT_I_AM_DOING") {
-          throw new Error(
-            "❌ ATENÇÃO: Tentativa de migração em produção sem confirmação explícita. " +
-            "Para executar em produção, defina CONFIRM_PRODUCTION_MIGRATION='YES_I_KNOW_WHAT_I_AM_DOING'"
-          );
-        }
-      }
-
-      console.log("🚀 Iniciando migração...");
-      console.log(`📊 Ambiente: ${isProd ? "production" : "development"}`);
-
-      // Verifica permissões
-      console.log("🔑 Verificando permissões...");
-      const hasPermissions = await this.checkPermissions();
-      if (!hasPermissions) {
-        throw new Error("❌ Usuário não tem permissões necessárias para executar migrações");
-      }
-      console.log("✅ Permissões verificadas");
-
-      // Verifica estado inicial das migrações
-      const initialState = await this.sql`
-        SELECT hash FROM drizzle_migrations ORDER BY id ASC
+      // Obtém estado inicial das migrações
+      const initialState = await this.sql<{ hash: string }[]>`
+        SELECT hash FROM drizzle_migrations
       `;
-      const initialHashes = initialState.map(row => row.hash);
 
       // Identifica migrações pendentes
-      const migrationsDir = path.join(process.cwd(), "db", "migrations");
-      const localMigrations = fs.readdirSync(migrationsDir)
-        .filter(file => file.endsWith(".sql"))
-        .sort();
-
-      const pendingMigrations = localMigrations
-        .map(file => file.replace(".sql", ""))
-        .filter(hash => !initialHashes.includes(hash));
+      const pendingMigrations = this.getLocalMigrations()
+        .filter(file => !initialState.some(row => row.hash === this.getHashFromFilename(file)));
 
       if (pendingMigrations.length > 0) {
-        console.log("\n📦 Migrações pendentes detectadas:", pendingMigrations);
-        console.log("🔄 Executando migrações manualmente...");
+        console.log('📦 Migrações pendentes detectadas:', pendingMigrations);
+        console.log('🔄 Executando migrações manualmente...');
 
-        for (const migrationFile of localMigrations) {
-          const hash = migrationFile.replace(".sql", "");
+        // Lista todas as migrações locais
+        const allMigrations = this.getLocalMigrations();
+        for (const migrationFile of allMigrations) {
+          const hash = this.getHashFromFilename(migrationFile);
           
-          // Verifica se a migração já foi aplicada
-          const exists = await this.sql`
-            SELECT 1 FROM drizzle_migrations WHERE hash = ${hash}
-          `;
-          
-          if (exists.length === 0) {
-            console.log(`\n📦 Aplicando migração ${migrationFile}...`);
-            
-            // Lê o conteúdo do arquivo
+          if (pendingMigrations.includes(migrationFile)) {
+            const migrationsDir = path.join(process.cwd(), "db", "migrations");
             const sqlContent = fs.readFileSync(path.join(migrationsDir, migrationFile), 'utf8');
             
-            // Executa o SQL
-            await this.sql.begin(async (sql) => {
-              try {
-                // Executa o SQL da migração
-                await sql.unsafe(sqlContent);
-                
-                // Registra a migração
-                await sql`
-                  INSERT INTO drizzle_migrations (hash)
-                  VALUES (${hash})
-                `;
-                
-                console.log(`✅ Migração ${migrationFile} aplicada com sucesso!`);
-              } catch (error) {
-                console.error(`❌ Erro ao aplicar migração ${migrationFile}:`, error);
-                throw error;
-              }
-            });
+            // Aplica a migração
+            await this.executeMigration(sqlContent, hash);
           } else {
             console.log(`ℹ️  Migração ${migrationFile} já aplicada.`);
           }
         }
+
+        // Verifica estado final das migrações
+        const finalState = await this.sql<{ hash: string }[]>`
+          SELECT hash FROM drizzle_migrations
+        `;
+
+        console.log('\n✅ Novas migrações aplicadas:');
+        pendingMigrations.forEach(file => {
+          console.log(`  - ${this.getHashFromFilename(file)}`);
+        });
+
+        console.log('\n✅ Todas as migrações foram aplicadas com sucesso!');
       } else {
-        console.log("\n✅ Não há migrações pendentes.");
+        console.log('✅ Nenhuma migração pendente encontrada.');
       }
 
-      // Verifica estado final das migrações
-      const finalState = await this.sql`
-        SELECT hash FROM drizzle_migrations ORDER BY id ASC
-      `;
-      const finalHashes = finalState.map(row => row.hash);
-
-      // Verifica se novas migrações foram registradas
-      const newMigrations = finalHashes.filter(hash => !initialHashes.includes(hash));
-
-      if (newMigrations.length > 0) {
-        console.log("\n✅ Novas migrações aplicadas:");
-        newMigrations.forEach(hash => console.log(`  - ${hash}`));
-      }
-
-      // Verifica se ainda há migrações pendentes
-      const remainingMigrations = localMigrations
-        .map(file => file.replace(".sql", ""))
-        .filter(hash => !finalHashes.includes(hash));
-
-      if (remainingMigrations.length > 0) {
-        throw new Error(
-          "❌ Algumas migrações não foram aplicadas:\n" +
-          remainingMigrations.map(hash => `  - ${hash}`).join("\n")
-        );
-      }
-
-      console.log("\n✅ Todas as migrações foram aplicadas com sucesso!");
-      
-      // Fecha a conexão após a migração
-      await this.close();
+      console.log('\n✨ Processo concluído com sucesso!');
     } catch (error) {
-      console.error("❌ Erro durante a migração:", error);
-      // Garante que a conexão seja fechada mesmo em caso de erro
-      await this.close();
+      console.error('\n❌ Erro durante a migração:', error);
       throw error;
+    } finally {
+      await this.sql.end();
     }
   }
 
