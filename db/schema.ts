@@ -34,7 +34,10 @@ export const subscriptions = pgTable("subscriptions", {
   createdTime: timestamp("created_time"),
   previousPlanId: text("previous_plan_id"),
   planChangedAt: timestamp("plan_changed_at"),
-  canceledAt: timestamp("canceled_at")
+  canceledAt: timestamp("canceled_at"),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').default(false),
+  cancellationReason: text('cancellation_reason'),
+  cancelRequestedAt: timestamp('cancel_requested_at'),
 });
 
 export const subscriptionPlans = pgTable("subscriptions_plans", {
