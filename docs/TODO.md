@@ -249,3 +249,89 @@
 - Redução de tempo de resolução de problemas
 - Aumento na detecção precoce de issues
 - Melhoria na qualidade do código 
+
+## Segurança das Rotas API
+
+### Alta Prioridade
+- [ ] Implementar rate limiting em todas as rotas:
+  - [ ] `/api/plans` - Proteção contra abusos
+  - [ ] `/api/user/subscription` - Limitar requisições por usuário
+  - [ ] `/api/payments/create-checkout-session` - Prevenir ataques de força bruta
+  - [ ] Demais endpoints públicos
+
+- [ ] Reforçar autenticação:
+  - [ ] Revisar rota `/api/plans` para possível necessidade de autenticação
+  - [ ] Adicionar validação de usuário em `/api/payments/create-checkout-session`
+  - [ ] Implementar middleware de autenticação global
+
+- [ ] Melhorar validação de inputs:
+  - [ ] Sanitização de dados em todas as rotas
+  - [ ] Validação rigorosa de parâmetros
+  - [ ] Implementar TypeScript strict mode em todas as rotas
+
+### Média Prioridade
+- [ ] Implementar logs de auditoria:
+  - [ ] Registro de todas as operações sensíveis
+  - [ ] Tracking de mudanças de plano
+  - [ ] Logs de tentativas de acesso inválidas
+
+- [ ] Melhorar tratamento de erros:
+  - [ ] Padronização de mensagens de erro
+  - [ ] Logging estruturado
+  - [ ] Notificações para erros críticos
+
+- [ ] Implementar monitoramento:
+  - [ ] Métricas de taxa de erro por rota
+  - [ ] Tempo de resposta
+  - [ ] Alertas para comportamentos anômalos
+
+### Baixa Prioridade
+- [ ] Documentação de segurança:
+  - [ ] Guia de boas práticas
+  - [ ] Documentação de cada endpoint
+  - [ ] Procedimentos de recuperação
+
+- [ ] Testes de segurança:
+  - [ ] Testes de penetração
+  - [ ] Testes de carga
+  - [ ] Validação de headers de segurança
+
+### Vulnerabilidades Identificadas
+1. Rota `/api/plans`:
+   - ⚠️ Sem autenticação
+   - ⚠️ Possível exposição de dados sensíveis
+   - ⚠️ Sem rate limiting
+
+2. Rota `/api/payments/create-checkout-session`:
+   - ⚠️ Necessita revisão na validação de usuário
+   - ⚠️ Possível vulnerabilidade em inputs
+   - ⚠️ Falta de rate limiting
+
+3. Webhooks:
+   - ✅ Verificação de assinatura implementada
+   - ⚠️ Possível melhoria no tratamento de eventos duplicados
+   - ⚠️ Necessidade de retry mechanism
+
+### Melhorias de Código
+```typescript
+// Exemplo de implementação de rate limiting
+import rateLimit from 'express-rate-limit'
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100, // limite por IP
+  message: 'Muitas requisições deste IP, tente novamente mais tarde'
+});
+
+// Exemplo de middleware de autenticação
+const authMiddleware = async (req: NextRequest) => {
+  const userId = req.headers.get("x-user-id");
+  if (!userId) {
+    return new NextResponse(
+      JSON.stringify({ error: "Não autorizado" }),
+      { status: 401 }
+    );
+  }
+  // Adicionar validação adicional aqui
+};
+``` 
