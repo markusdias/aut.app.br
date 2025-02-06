@@ -14,6 +14,15 @@ export type Subscription = {
   customerId: string;
   createdAt: string;
   updatedAt: string;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  defaultPaymentMethodId?: string;
+  previousPlanId?: string;
+  planChangedAt?: string;
+  canceledAt?: string;
+  cancelAtPeriodEnd?: boolean;
+  cancellationReason?: string | null;
+  cancelRequestedAt?: string | null;
 };
 
 export type UserSubscriptionInfo = {

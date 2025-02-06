@@ -5,6 +5,8 @@ import {
   AccountBlockedTemplate,
   PlanChangedTemplate
 } from './templates';
+import { SubscriptionCancelScheduled } from './templates/SubscriptionCancelScheduled';
+import { SubscriptionCancelReverted } from './templates/SubscriptionCancelReverted';
 import { db } from '@/db/drizzle';
 import { subscriptionPlans } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -138,5 +140,77 @@ export async function sendPlanChangedNotification(data: {
     );
   } catch (error) {
     console.error('❌ Erro ao enviar notificação de mudança de plano:', error);
+  }
+}
+
+export async function sendSubscriptionCancelScheduledNotification({
+  userId,
+  email,
+  effectiveCancellationDate,
+  planId,
+}: {
+  userId: string;
+  email: string;
+  effectiveCancellationDate: Date;
+  planId: string;
+}) {
+  try {
+    const emailTemplate = new SubscriptionCancelScheduled(email);
+
+    await notificationService.sendEmail(emailTemplate, {
+      userId,
+      email,
+      templateData: {
+        effectiveCancellationDate
+      }
+    });
+
+    console.log('✅ Email de cancelamento agendado enviado:', {
+      userId,
+      email,
+      effectiveCancellationDate,
+      planId,
+    });
+  } catch (error) {
+    console.error('❌ Erro ao enviar email de cancelamento agendado:', error);
+    throw error;
+  }
+}
+
+export async function sendSubscriptionCancelRevertedNotification({
+  userId,
+  email,
+  planId,
+}: {
+  userId: string;
+  email: string;
+  planId: string;
+}) {
+  try {
+    // Busca informações do plano
+    const plan = await db
+      .select()
+      .from(subscriptionPlans)
+      .where(eq(subscriptionPlans.planId, planId))
+      .limit(1);
+
+    const emailTemplate = new SubscriptionCancelReverted(email);
+
+    await notificationService.sendEmail(emailTemplate, {
+      userId,
+      email,
+      templateData: {
+        planName: plan[0]?.name || 'Não especificado'
+      }
+    });
+
+    console.log('✅ Email de reversão de cancelamento enviado:', {
+      userId,
+      email,
+      planId,
+    });
+  } catch (error) {
+    console.error('❌ Erro ao enviar email de reversão de cancelamento:', error);
+    throw error;
   }
 } 
