@@ -1,0 +1,267 @@
+---
+description: Esta regra garante que todo o código gerado ou modificado esteja aderente à estrutura de pastas predefinida do projeto
+globs: src/app/**/*.{ts,tsx,js,jsx,css,scss}, src/core-api/**/*.{ts,tsx,js,jsx,css,scss}, src/webhooks/**/*.{ts,tsx,js,jsx,css,scss}, src/integrations/**/*.{ts,tsx,js,jsx,css,scss}, src/pages/**/*.{ts,tsx,js,jsx,css,scss}, src/features/**/*.{ts,tsx,js,jsx,css,scss}, src/components/**/*.{ts,tsx,js,jsx,css,scss}, src/hooks/**/*.{ts,tsx,js,jsx,css,scss}, src/types/**/*.{ts,tsx,js,jsx}, src/utils/**/*.{ts,tsx,js,jsx}, src/queue/**/*.{ts,tsx,js,jsx}, src/cache/**/*.{ts,tsx,js,jsx}, src/events/**/*.{ts,tsx,js,jsx}, src/security/**/*.{ts,tsx,js,jsx}, src/monitoring/**/*.{ts,tsx,js,jsx}, src/background/**/*.{ts,tsx,js,jsx}, public/**/*, tests/**/*.{ts,tsx,js,jsx}, docs/**/*, scripts/**/*, config/**/*, db/**/*, .github/**/*
+---
+# Description
+Esta regra garante que todo o código gerado ou modificado esteja aderente à estrutura de pastas predefinida do projeto. Se a IA identificar algum arquivo fora dessa estrutura, deverá:
+- Determinar o diretório correto com base no tipo e finalidade do arquivo;
+- Mover o arquivo para a localização adequada;
+- Atualizar todas as dependências, importações e referências para refletir a nova localização;
+- Gerar um relatório resumindo as alterações realizadas.
+
+# Estrutura Detalhada
+```
+root/
+├── src/                      # Código fonte principal
+│   ├── app/                 # Core da aplicação
+│   │   ├── bootstrap/      # Inicialização da aplicação
+│   │   ├── providers/      # Providers da aplicação
+│   │   └── config/        # Configurações da aplicação
+│   │
+│   ├── core-api/           # APIs principais do sistema
+│   │   ├── endpoints/     # Endpoints da aplicação
+│   │   │   ├── v1/      # Versionamento de API
+│   │   │   └── v2/
+│   │   ├── middlewares/  # Middlewares da API
+│   │   │   ├── auth/    # Autenticação
+│   │   │   ├── validation/ # Validação
+│   │   │   └── rate-limit/ # Rate limiting
+│   │   ├── routes/      # Rotas da API
+│   │   └── controllers/ # Controllers
+│   │
+│   ├── webhooks/          # Sistema de Webhooks
+│   │   ├── providers/    # Providers de webhook
+│   │   │   ├── stripe/
+│   │   │   ├── clerk/
+│   │   │   └── [provider]/
+│   │   ├── handlers/    # Handlers de webhook
+│   │   ├── middleware/  # Middlewares específicos
+│   │   ├── validation/  # Validação de webhooks
+│   │   └── queue/      # Fila de processamento
+│   │
+│   ├── integrations/      # Integrações externas
+│   │   ├── payment/     # Integrações de pagamento
+│   │   ├── auth/       # Integrações de auth
+│   │   ├── email/      # Integrações de email
+│   │   └── [service]/  # Outras integrações
+│   │
+│   ├── pages/             # Pages (Next.js/similar)
+│   │   ├── (authenticated)/     # Rotas que exigem autenticação
+│   │   │   ├── dashboard/
+│   │   │   ├── settings/
+│   │   │   └── profile/
+│   │   ├── (guest)/            # Rotas exclusivas para não autenticados
+│   │   │   ├── login/
+│   │   │   └── register/
+│   │   ├── (shared)/           # Rotas acessíveis a todos
+│   │   │   ├── about/
+│   │   │   └── contact/
+│   │   ├── (admin)/            # Rotas administrativas
+│   │   │   ├── users/
+│   │   │   └── settings/
+│   │   └── api/                # API routes do Next.js
+│   │       └── webhooks/       # Webhook endpoints
+│   │
+│   ├── features/          # Features isoladas
+│   │   └── [feature-name]/ # Nome explícito da feature
+│   │       ├── components/ # Componentes exclusivos da feature
+│   │       ├── hooks/      # Hooks exclusivos da feature
+│   │       ├── services/   # Serviços da feature
+│   │       ├── types/      # Tipos da feature
+│   │       ├── utils/      # Utilitários da feature
+│   │       └── tests/      # Testes da feature
+│   │
+│   ├── components/        # Componentes React/UI
+│   │   ├── shared/      # Componentes reutilizáveis globalmente
+│   │   │   ├── buttons/
+│   │   │   ├── inputs/
+│   │   │   └── cards/
+│   │   ├── form-elements/ # Elementos específicos de formulários
+│   │   │   ├── inputs/    # Campos de entrada customizados
+│   │   │   ├── validators/ # Validadores de formulário
+│   │   │   └── masks/     # Máscaras de input
+│   │   ├── layout/      
+│   │   │   ├── structure/  # Elementos estruturais (Header, Footer, etc)
+│   │   │   └── containers/ # Containers e grids
+│   │   └── features/    # Componentes específicos de features
+│   │       └── [feature-name]/ # Nome explícito da feature
+│   │
+│   ├── hooks/            # Hooks globais
+│   │   ├── shared/      # Hooks reutilizáveis globalmente
+│   │   │   ├── state/     # Hooks de estado
+│   │   │   ├── lifecycle/ # Hooks de ciclo de vida
+│   │   │   └── events/    # Hooks de eventos
+│   │   ├── api-integration/ # Hooks de integração com APIs
+│   │   │   ├── queries/    # Hooks de consulta
+│   │   │   └── mutations/  # Hooks de mutação
+│   │   └── form-handling/  # Hooks específicos para formulários
+│   │       ├── validation/ # Hooks de validação
+│   │       └── state/      # Hooks de estado de formulário
+│   │
+│   ├── types/            # Tipos TypeScript
+│   │   ├── shared/     # Tipos compartilhados globalmente
+│   │   │   ├── entities/   # Tipos de entidades base
+│   │   │   └── dto/        # Tipos de transferência de dados
+│   │   ├── api-contracts/ # Contratos de API
+│   │   │   ├── requests/   # Tipos de requisição
+│   │   │   ├── responses/  # Tipos de resposta
+│   │   │   └── params/     # Tipos de parâmetros
+│   │   └── domain/    # Tipos do domínio da aplicação
+│   │       ├── models/     # Modelos de domínio
+│   │       └── enums/      # Enumerações do domínio
+│   │
+│   ├── utils/            # Utilitários
+│   │   ├── functions/  # Funções utilitárias puras
+│   │   │   ├── string/   # Manipulação de strings
+│   │   │   ├── date/     # Manipulação de datas
+│   │   │   └── number/   # Manipulação de números
+│   │   ├── formatters/ # Formatadores com regras de negócio
+│   │   │   ├── currency/ # Formatação de moeda
+│   │   │   ├── date/     # Formatação de data conforme locale
+│   │   │   └── text/     # Formatação de texto
+│   │   └── validation/ # Regras de validação
+│   │       ├── rules/    # Regras de validação reutilizáveis
+│   │       └── schemas/  # Schemas de validação
+│   │
+│   ├── queue/            # Sistema de Filas
+│   │   ├── workers/    # Workers
+│   │   ├── jobs/      # Definições de jobs
+│   │   └── processors/ # Processadores
+│   │
+│   ├── cache/            # Sistema de Cache
+│   │   ├── providers/  # Providers (Redis, etc)
+│   │   └── strategies/ # Estratégias de cache
+│   │
+│   ├── events/           # Sistema de Eventos
+│   │   ├── listeners/  # Event listeners
+│   │   ├── dispatchers/ # Event dispatchers
+│   │   └── handlers/  # Event handlers
+│   │
+│   ├── security/         # Segurança
+│   │   ├── encryption/ # Criptografia
+│   │   ├── authentication/ # Autenticação
+│   │   └── authorization/ # Autorização
+│   │
+│   ├── monitoring/       # Monitoramento
+│   │   ├── logging/    # Sistema de logs
+│   │   ├── metrics/   # Métricas
+│   │   └── alerts/    # Alertas
+│   │
+│   └── background/       # Tarefas em background
+│       ├── jobs/       # Jobs agendados
+│       ├── processors/ # Processadores
+│       └── tasks/      # Tarefas
+│
+├── public/              # Arquivos públicos
+│   ├── assets/       # Assets estáticos
+│   │   ├── images/  # Imagens
+│   │   ├── fonts/   # Fontes
+│   │   └── icons/   # Ícones
+│   └── locales/     # Arquivos de i18n
+│
+├── tests/               # Testes
+│   ├── unit/         # Testes unitários
+│   │   └── __mocks__/ # Mocks para testes
+│   ├── integration/  # Testes de integração
+│   ├── e2e/         # Testes end-to-end
+│   └── fixtures/    # Dados para testes
+│
+├── docs/                # Documentação
+│   ├── api/          # Documentação da API
+│   ├── architecture/ # Documentação de arquitetura
+│   ├── guides/      # Guias e tutoriais
+│   └── decisions/   # Decisões de arquitetura
+```
+
+# Globs Detalhados
+## Core da Aplicação
+- `src/app/{bootstrap,providers,config}/**/*.{ts,tsx,js,jsx,css,scss}`
+
+## API e Endpoints
+- `src/core-api/endpoints/{v1,v2}/**/*.{ts,tsx,js,jsx,css,scss}`
+- `src/core-api/middlewares/{auth,validation,rate-limit}/**/*.{ts,tsx,js,jsx,css,scss}`
+- `src/core-api/{routes,controllers}/**/*.{ts,tsx,js,jsx,css,scss}`
+
+## Webhooks
+- `src/webhooks/providers/{stripe,clerk,[provider]}/**/*.{ts,tsx,js,jsx,css,scss}`
+- `src/webhooks/{handlers,middleware,validation,queue}/**/*.{ts,tsx,js,jsx,css,scss}`
+
+## Integrações
+- `src/integrations/{payment,auth,email,[service]}/**/*.{ts,tsx,js,jsx,css,scss}`
+
+## Pages e Rotas
+- `src/pages/{(authenticated),(guest),(shared),(admin),api}/**/*.{ts,tsx,js,jsx,css,scss}`
+
+## Features
+- `src/features/[feature-name]/{components,hooks,services,types,utils,tests}/**/*.{ts,tsx,js,jsx,css,scss}`
+
+## Componentes
+- `src/components/shared/{buttons,inputs,cards}/**/*.{ts,tsx,js,jsx,css,scss}`
+- `src/components/form-elements/{inputs,validators,masks}/**/*.{ts,tsx,js,jsx,css,scss}`
+- `src/components/layout/{structure,containers}/**/*.{ts,tsx,js,jsx,css,scss}`
+- `src/components/features/[feature-name]/**/*.{ts,tsx,js,jsx,css,scss}`
+
+## Hooks
+- `src/hooks/shared/{state,lifecycle,events}/**/*.{ts,tsx,js,jsx}`
+- `src/hooks/api-integration/{queries,mutations}/**/*.{ts,tsx,js,jsx}`
+- `src/hooks/form-handling/{validation,state}/**/*.{ts,tsx,js,jsx}`
+
+## Types
+- `src/types/shared/{entities,dto}/**/*.{ts,tsx}`
+- `src/types/api-contracts/{requests,responses,params}/**/*.{ts,tsx}`
+- `src/types/domain/{models,enums}/**/*.{ts,tsx}`
+
+## Utils
+- `src/utils/functions/{string,date,number}/**/*.{ts,tsx,js,jsx}`
+- `src/utils/formatters/{currency,date,text}/**/*.{ts,tsx,js,jsx}`
+- `src/utils/validation/{rules,schemas}/**/*.{ts,tsx,js,jsx}`
+
+## Sistemas de Infraestrutura
+- `src/queue/{workers,jobs,processors}/**/*.{ts,tsx,js,jsx}`
+- `src/cache/{providers,strategies}/**/*.{ts,tsx,js,jsx}`
+- `src/events/{listeners,dispatchers,handlers}/**/*.{ts,tsx,js,jsx}`
+- `src/security/{encryption,authentication,authorization}/**/*.{ts,tsx,js,jsx}`
+- `src/monitoring/{logging,metrics,alerts}/**/*.{ts,tsx,js,jsx}`
+- `src/background/{jobs,processors,tasks}/**/*.{ts,tsx,js,jsx}`
+
+## Assets Públicos
+- `public/assets/{images,fonts,icons}/**/*`
+- `public/locales/**/*`
+
+## Testes
+- `tests/{unit,integration,e2e,fixtures}/**/*.{ts,tsx,js,jsx}`
+- `tests/unit/__mocks__/**/*.{ts,tsx,js,jsx}`
+
+## Documentação
+- `docs/{api,architecture,guides,decisions}/**/*`
+
+# Rule
+1. **Validação de Localização:**  
+   - Ao gerar ou modificar qualquer arquivo, o Cursor AI deve confirmar se o arquivo se encontra em um dos diretórios listados nos globs acima.
+   - ANTES de criar qualquer arquivo, deve-se fazer uma leitura em todas as pastas em busca do arquivo desejado. Ele pode estar em estrutura diferente da remendada. Se encontrado deve ser movido para a estrutura correta para somente então ser editado, se necessário.
+
+2. **Movimentação de Arquivos Externos:**  
+   Caso um arquivo seja identificado fora da estrutura definida:
+   - A IA deve identificar o tipo e a finalidade do arquivo;
+   - Determinar o diretório correto de acordo com a estrutura detalhada;
+   - Mover o arquivo automaticamente para o diretório adequado.
+
+3. **Atualização de Dependências e Importações:**  
+   Após a movimentação do arquivo, a IA deve:
+   - Atualizar todas as referências, importações e dependências;
+   - Garantir que o código continue funcionando corretamente;
+   - Validar que os novos caminhos seguem os padrões de importação (@/).
+
+4. **Relatório de Alterações:**  
+   Ao finalizar a movimentação e atualização, a IA deve gerar um resumo detalhado:
+   - Quais arquivos foram movidos;
+   - Quais importações ou referências foram atualizadas;
+   - Confirmação de que a nova localização segue a estrutura detalhada.
+
+5. **Confirmação de Alterações:**  
+   - Solicitar confirmação do usuário para alterações significativas;
+   - Apresentar diff das mudanças propostas;
+   - Permitir revisão antes da aplicação final.
+
+*Observação:*  
+Esta regra é crítica para manter a integridade e a organização do projeto. Movimentações automáticas e atualizações de dependências devem ser executadas com cautela. Em caso de dúvidas ou mudanças de alto impacto, a IA deve sempre priorizar a solicitação de validação do usuário.

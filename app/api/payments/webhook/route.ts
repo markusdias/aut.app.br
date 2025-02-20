@@ -9,6 +9,7 @@ import {
   sendPaymentFailedNotification,
   sendPlanChangedNotification
 } from '@/utils/notifications/sendNotifications';
+import { logWebhookEvent, updateWebhookStatus } from '@/lib/webhooks/logger/webhook-logger';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -52,19 +53,56 @@ type InvoiceData = {
 };
 
 export async function POST(req: Request) {
+  let webhookEventId: string | undefined;
+
   try {
     const body = await req.text();
     const headersList = await headers();
-    const signature = headersList.get("stripe-signature")!;
+    const signature = headersList.get("stripe-signature");
+
+    console.log('📨 Webhook recebido do Stripe');
+
+    if (!signature) {
+      console.error("❌ Assinatura do Stripe ausente");
+      return new NextResponse("Missing signature", { status: 400 });
+    }
 
     let event: Stripe.Event;
 
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      webhookEventId = event.id;
+      
+      console.log('✅ Evento Stripe construído:', {
+        id: event.id,
+        type: event.type,
+        timestamp: new Date().toISOString()
+      });
     } catch (err) {
-      console.error("❌ Webhook signature verification failed.", err);
+      console.error("❌ Falha na verificação da assinatura do webhook.", {
+        error: err instanceof Error ? err.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
       return new NextResponse("Webhook error", { status: 400 });
     }
+
+    // Log webhook event
+    await logWebhookEvent(
+      'stripe',
+      event.id,
+      event.type,
+      event.data.object,
+      { 'stripe-signature': signature }
+    );
+
+    // Update status to processing
+    await updateWebhookStatus(event.id, 'processing');
+
+    console.log('🎯 Iniciando processamento do webhook:', {
+      id: event.id,
+      type: event.type,
+      timestamp: new Date().toISOString()
+    });
 
     const relevantEvents = new Set([
       "product.updated",
@@ -81,199 +119,101 @@ export async function POST(req: Request) {
 
     if (relevantEvents.has(event.type)) {
       try {
+        console.log('⚙️ Processando evento relevante:', {
+          type: event.type,
+          id: event.id,
+          timestamp: new Date().toISOString()
+        });
+
+        let result;
         switch (event.type) {
-          case "product.updated": {
-            try {
-              const product = event.data.object as Stripe.Product;
-              console.log("🔄 Webhook product.updated recebido:", {
-                productId: product.id,
-                productMetadata: product.metadata
-              });
-              
-              // Busca todos os preços associados a este produto
-              const prices = await stripe.prices.list({
-                product: product.id,
-                active: true,
-              });
-
-              console.log("📦 Preços encontrados:", prices.data.length);
-
-              // Atualiza ou cria os planos para cada preço
-              for (const price of prices.data) {
-                const existingPlan = await db
-                  .select()
-                  .from(subscriptionPlans)
-                  .where(eq(subscriptionPlans.planId, price.id))
-                  .limit(1);
-
-                console.log("🔍 Plano no banco:", existingPlan[0] || "Não encontrado");
-
-                if (existingPlan.length === 0) {
-                  // Plano não existe, vamos criar
-                  console.log("📝 Criando novo plano para:", price.id);
-                  const insertResult = await db
-                    .insert(subscriptionPlans)
-                    .values({
-                      planId: price.id,
-                      active: product.active && price.active,
-                      name: product.name,
-                      description: product.description || "",
-                      amount: String(price.unit_amount! / 100),
-                      currency: price.currency,
-                      interval: price.type === "recurring" ? price.recurring?.interval || "month" : "one_time",
-                      metadata: Object.keys(product.metadata).length > 0 ? product.metadata : null
-                    })
-                    .returning();
-
-                  console.log("✅ Plano criado:", {
-                    planoCriado: insertResult[0],
-                    metadatosInseridos: insertResult[0]?.metadata
-                  });
-                } else {
-                  // Plano existe, vamos atualizar
-                  const updateResult = await db
-                    .update(subscriptionPlans)
-                    .set({
-                      active: product.active && price.active,
-                      name: product.name,
-                      description: product.description || "",
-                      metadata: Object.keys(product.metadata).length > 0 ? product.metadata : null
-                    })
-                    .where(eq(subscriptionPlans.planId, price.id))
-                    .returning();
-
-                  console.log("✅ Plano atualizado:", {
-                    planoAtualizado: updateResult[0],
-                    metadatosAtualizados: updateResult[0]?.metadata
-                  });
-                }
-              }
-              
-              return NextResponse.json({
-                received: true,
-                message: "Product updated successfully"
-              });
-            } catch (error) {
-              console.error("❌ Erro ao processar product.updated:", error);
-              throw error;
-            }
-          }
-
-          case "product.deleted": {
-            const product = event.data.object as Stripe.Product;
-            
-            // Busca todos os preços associados a este produto
-            const prices = await stripe.prices.list({
-              product: product.id,
-              active: true,
-            });
-
-            // Marca como inativo todos os planos relacionados
-            for (const price of prices.data) {
-              await db
-                .update(subscriptionPlans)
-                .set({ active: false })
-                .where(eq(subscriptionPlans.planId, price.id));
-            }
+          case "product.updated":
+            result = await handleProductUpdated(event);
             break;
-          }
-
-          case "price.updated": {
-            try {
-              const price = event.data.object as Stripe.Price;
-              console.log("🔄 Webhook price.updated recebido:", {
-                priceId: price.id,
-                productId: price.product,
-                priceMetadata: price.metadata
-              });
-              
-              // Busca o produto relacionado
-              const product = await stripe.products.retrieve(price.product as string);
-              console.log("📦 Produto encontrado:", {
-                name: product.name,
-                id: product.id,
-                metadata: product.metadata,
-                hasMetadata: Object.keys(product.metadata).length > 0
-              });
-
-              // Verifica se o plano existe antes de atualizar
-              const existingPlan = await db
-                .select()
-                .from(subscriptionPlans)
-                .where(eq(subscriptionPlans.planId, price.id))
-                .limit(1);
-
-              console.log("🔍 Plano no banco:", existingPlan[0] || "Não encontrado");
-
-              const updateResult = await db
-                .update(subscriptionPlans)
-                .set({
-                  active: product.active && price.active,
-                  amount: String(price.unit_amount! / 100),
-                  currency: price.currency,
-                  interval: price.type === "recurring" ? price.recurring?.interval || "month" : "one_time",
-                  name: product.name,
-                  description: product.description || "",
-                  metadata: Object.keys(price.metadata).length > 0 ? price.metadata : null
-                })
-                .where(eq(subscriptionPlans.planId, price.id))
-                .returning();
-
-              console.log("✅ Resultado da atualização:", {
-                planoAtualizado: updateResult[0],
-                metadatosAtualizados: updateResult[0]?.metadata
-              });
-
-              return NextResponse.json({
-                received: true,
-                updated: updateResult[0]
-              });
-            } catch (error) {
-              console.error("❌ Erro ao processar price.updated:", error);
-              throw error;
-            }
-          }
-
-          case "price.deleted": {
-            const price = event.data.object as Stripe.Price;
-            
-            await db
-              .update(subscriptionPlans)
-              .set({ active: false })
-              .where(eq(subscriptionPlans.planId, price.id));
+          case "product.deleted":
+            result = await handleProductDeleted(event);
             break;
-          }
-
+          case "price.updated":
+            result = await handlePriceUpdated(event);
+            break;
+          case "price.deleted":
+            result = await handlePriceDeleted(event);
+            break;
           case "customer.subscription.created":
-            return handleSubscriptionEvent(event, "created");
+            result = await handleSubscriptionEvent(event, "created");
+            break;
           case "customer.subscription.updated":
-            return handleSubscriptionEvent(event, "updated");
+            result = await handleSubscriptionEvent(event, "updated");
+            break;
           case "customer.subscription.deleted":
-            return handleSubscriptionEvent(event, "deleted");
+            result = await handleSubscriptionEvent(event, "deleted");
+            break;
           case "invoice.payment_succeeded":
-            return handleInvoiceEvent(event, "succeeded");
+            result = await handleInvoiceEvent(event, "succeeded");
+            break;
           case "invoice.payment_failed":
-            return handleInvoiceEvent(event, "failed");
+            result = await handleInvoiceEvent(event, "failed");
+            break;
           case "checkout.session.completed":
-            return handleCheckoutSessionCompleted(event);
+            result = await handleCheckoutSessionCompleted(event);
+            break;
           default:
-            console.log(`⚠️ Unhandled event type: ${event.type}`);
-            return NextResponse.json({
-              received: true,
-              message: `Unhandled event type: ${event.type}`,
-            });
+            console.warn(`⚠️ Tipo de evento não tratado: ${event.type}`);
+            result = { status: 200, message: `Unhandled event type: ${event.type}` };
         }
 
-        return NextResponse.json({ received: true });
-      } catch (error) {
-        console.error("❌ Webhook handler failed.", error);
-        return new NextResponse("Webhook handler failed", { status: 500 });
+        console.log('✅ Evento processado com sucesso:', {
+          type: event.type,
+          id: event.id,
+          result,
+          timestamp: new Date().toISOString()
+        });
+
+        // Atualiza o status para completed ANTES de retornar a resposta
+        await updateWebhookStatus(event.id, 'completed');
+
+        return new NextResponse(JSON.stringify(result), {
+          status: result.status || 200
+        });
+      } catch (error: any) {
+        console.error('❌ Erro no processamento do evento:', {
+          type: event.type,
+          id: event.id,
+          error: error.message,
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        });
+
+        // Update status to failed
+        await updateWebhookStatus(event.id, 'failed', error.message);
+        throw error;
       }
+    } else {
+      console.log('ℹ️ Evento não relevante ignorado:', {
+        type: event.type,
+        id: event.id,
+        timestamp: new Date().toISOString()
+      });
     }
 
-    return NextResponse.json({ received: true });
-  } catch (error) {
-    console.error("❌ Webhook failed.", error);
+    // Atualiza o status para completed ANTES de retornar a resposta
+    await updateWebhookStatus(event.id, 'completed');
+    return new NextResponse("Webhook processed", { status: 200 });
+  } catch (error: any) {
+    console.error("❌ Falha geral no webhook:", {
+      eventId: webhookEventId,
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    // Se temos o ID do evento e ainda não atualizamos o status para failed
+    if (webhookEventId) {
+      await updateWebhookStatus(webhookEventId, 'failed', 
+        `Erro geral: ${error.message}`
+      );
+    }
+
     return new NextResponse("Webhook failed", { status: 500 });
   }
 }
@@ -995,5 +935,194 @@ async function handlePlanEvent(event: Stripe.Event) {
       status: 500,
       error: "Error updating plan",
     });
+  }
+}
+
+async function handleProductUpdated(event: Stripe.Event) {
+  try {
+    const product = event.data.object as Stripe.Product;
+    console.log("🔄 Processando product.updated:", {
+      productId: product.id,
+      productMetadata: product.metadata
+    });
+    
+    // Busca todos os preços associados a este produto
+    const prices = await stripe.prices.list({
+      product: product.id,
+      active: true,
+    });
+
+    console.log("📦 Preços encontrados:", prices.data.length);
+
+    // Atualiza ou cria os planos para cada preço
+    for (const price of prices.data) {
+      const existingPlan = await db
+        .select()
+        .from(subscriptionPlans)
+        .where(eq(subscriptionPlans.planId, price.id))
+        .limit(1);
+
+      console.log("🔍 Plano no banco:", existingPlan[0] || "Não encontrado");
+
+      if (existingPlan.length === 0) {
+        // Plano não existe, vamos criar
+        console.log("📝 Criando novo plano para:", price.id);
+        const insertResult = await db
+          .insert(subscriptionPlans)
+          .values({
+            planId: price.id,
+            active: product.active && price.active,
+            name: product.name,
+            description: product.description || "",
+            amount: String(price.unit_amount! / 100),
+            currency: price.currency,
+            interval: price.type === "recurring" ? price.recurring?.interval || "month" : "one_time",
+            metadata: Object.keys(product.metadata).length > 0 ? product.metadata : null
+          })
+          .returning();
+
+        console.log("✅ Plano criado:", {
+          planoCriado: insertResult[0],
+          metadatosInseridos: insertResult[0]?.metadata
+        });
+      } else {
+        // Plano existe, vamos atualizar
+        const updateResult = await db
+          .update(subscriptionPlans)
+          .set({
+            active: product.active && price.active,
+            name: product.name,
+            description: product.description || "",
+            metadata: Object.keys(product.metadata).length > 0 ? product.metadata : null
+          })
+          .where(eq(subscriptionPlans.planId, price.id))
+          .returning();
+
+        console.log("✅ Plano atualizado:", {
+          planoAtualizado: updateResult[0],
+          metadatosAtualizados: updateResult[0]?.metadata
+        });
+      }
+    }
+    
+    return {
+      status: 200,
+      message: "Product updated successfully"
+    };
+  } catch (error) {
+    console.error("❌ Erro ao processar product.updated:", error);
+    throw error;
+  }
+}
+
+async function handleProductDeleted(event: Stripe.Event) {
+  try {
+    const product = event.data.object as Stripe.Product;
+    console.log("🗑️ Processando product.deleted:", {
+      productId: product.id
+    });
+    
+    // Busca todos os preços associados a este produto
+    const prices = await stripe.prices.list({
+      product: product.id,
+      active: true,
+    });
+
+    // Marca como inativo todos os planos relacionados
+    for (const price of prices.data) {
+      await db
+        .update(subscriptionPlans)
+        .set({ active: false })
+        .where(eq(subscriptionPlans.planId, price.id));
+    }
+
+    return {
+      status: 200,
+      message: "Product deleted successfully"
+    };
+  } catch (error) {
+    console.error("❌ Erro ao processar product.deleted:", error);
+    throw error;
+  }
+}
+
+async function handlePriceUpdated(event: Stripe.Event) {
+  try {
+    const price = event.data.object as Stripe.Price;
+    console.log("🔄 Processando price.updated:", {
+      priceId: price.id,
+      productId: price.product,
+      priceMetadata: price.metadata
+    });
+    
+    // Busca o produto relacionado
+    const product = await stripe.products.retrieve(price.product as string);
+    console.log("📦 Produto encontrado:", {
+      name: product.name,
+      id: product.id,
+      metadata: product.metadata,
+      hasMetadata: Object.keys(product.metadata).length > 0
+    });
+
+    // Verifica se o plano existe antes de atualizar
+    const existingPlan = await db
+      .select()
+      .from(subscriptionPlans)
+      .where(eq(subscriptionPlans.planId, price.id))
+      .limit(1);
+
+    console.log("🔍 Plano no banco:", existingPlan[0] || "Não encontrado");
+
+    const updateResult = await db
+      .update(subscriptionPlans)
+      .set({
+        active: product.active && price.active,
+        amount: String(price.unit_amount! / 100),
+        currency: price.currency,
+        interval: price.type === "recurring" ? price.recurring?.interval || "month" : "one_time",
+        name: product.name,
+        description: product.description || "",
+        metadata: Object.keys(price.metadata).length > 0 ? price.metadata : null
+      })
+      .where(eq(subscriptionPlans.planId, price.id))
+      .returning();
+
+    console.log("✅ Plano atualizado:", {
+      planoAtualizado: updateResult[0],
+      metadatosAtualizados: updateResult[0]?.metadata
+    });
+
+    return {
+      status: 200,
+      message: "Price updated successfully",
+      data: updateResult[0]
+    };
+  } catch (error) {
+    console.error("❌ Erro ao processar price.updated:", error);
+    throw error;
+  }
+}
+
+async function handlePriceDeleted(event: Stripe.Event) {
+  try {
+    const price = event.data.object as Stripe.Price;
+    console.log("🗑️ Processando price.deleted:", {
+      priceId: price.id
+    });
+    
+    const updateResult = await db
+      .update(subscriptionPlans)
+      .set({ active: false })
+      .where(eq(subscriptionPlans.planId, price.id))
+      .returning();
+
+    return {
+      status: 200,
+      message: "Price deleted successfully",
+      data: updateResult[0]
+    };
+  } catch (error) {
+    console.error("❌ Erro ao processar price.deleted:", error);
+    throw error;
   }
 }

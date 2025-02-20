@@ -18,6 +18,7 @@ import SubscriptionCard from "./components/SubscriptionCard";
 import axios from "axios";
 import PaymentHistory from './components/PaymentHistory';
 import { Suspense } from "react";
+import LogsView from './components/LogsView';
 
 type SubscriptionHistory = {
   oldPlanName: string;
@@ -83,6 +84,7 @@ export default function SettingsPage() {
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
           </TabsList>
 
           <TabsContent value="account">
@@ -325,6 +327,12 @@ export default function SettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <div className="space-y-6">
+              <LogsView />
             </div>
           </TabsContent>
         </Tabs>

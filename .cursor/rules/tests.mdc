@@ -1,0 +1,137 @@
+---
+description: Esta regra orienta a geração de testes
+globs: src/features/**/tests/**/*.{ts,tsx}, tests/**/*.{test,spec}.{ts,tsx}
+---
+# Description
+Esta regra orienta a geração de testes:
+- Utilize a estrutura base do projeto para organizar os testes (por exemplo, testes unitários em `tests/unit/`, testes de integração em `tests/integration/` e, para features, dentro de `src/features/[feature-name]/tests/`).
+
+# Globs
+- `src/features/**/tests/**/*.{ts,tsx}`
+- `tests/**/*.{test,spec}.{ts,tsx}`
+
+## DIRETRIZES DE TESTES SE HOUVER.
+
+### 1. RESTRIÇÕES (O QUE NÃO FAZER)
+
+#### 1.1 Estrutura e Organização
+- NÃO misturar diferentes tipos de testes no mesmo arquivo
+- NÃO criar testes interdependentes
+- NÃO deixar testes sem documentação clara
+- NÃO duplicar código de teste
+- NÃO ignorar a estrutura de diretórios definida
+
+#### 1.2 Mocks e Stubs
+- NÃO criar mocks desnecessariamente complexos
+- NÃO mockar mais do que o necessário
+- NÃO reutilizar mocks entre diferentes testes
+- NÃO deixar mocks sem tipagem adequada
+- NÃO criar mocks que violam o contrato da interface
+
+#### 1.3 Estado e Setup
+- NÃO deixar estado compartilhado entre testes
+- NÃO ignorar limpeza após os testes
+- NÃO depender de ordem de execução
+- NÃO usar dados de produção nos testes
+- NÃO deixar recursos abertos após os testes
+
+### 2. DIRETRIZES (O QUE FAZER)
+
+#### 2.1 Estrutura e Organização
+- SEMPRE seguir a estrutura de diretórios definida
+- SEMPRE separar testes por tipo (unit, integration, e2e)
+- SEMPRE nomear arquivos de teste com sufixo .test.ts
+- SEMPRE agrupar testes relacionados em describe blocks
+- SEMPRE documentar o propósito de cada suite de testes
+
+#### 2.2 Mocks e Stubs
+- SEMPRE tipar corretamente os mocks
+- SEMPRE limitar o escopo dos mocks
+- SEMPRE documentar o comportamento esperado
+- SEMPRE validar as chamadas aos mocks
+- SEMPRE criar factories para mocks reutilizáveis
+
+#### 2.3 Estado e Setup
+- SEMPRE implementar setup completo
+- SEMPRE limpar recursos após cada teste
+- SEMPRE isolar o ambiente de teste
+- SEMPRE usar dados fake consistentes
+- SEMPRE garantir idempotência dos testes
+
+### 3. BOAS PRÁTICAS
+
+#### 3.1 Nomenclatura
+- Usar nomes descritivos para os testes
+- Seguir padrão "dado/quando/então"
+- Usar prefixos consistentes (test_, should_, etc)
+- Nomear variáveis de teste claramente
+- Documentar casos complexos
+
+#### 3.2 Asserções
+- Fazer asserções específicas e focadas
+- Validar tanto casos de sucesso quanto erro
+- Usar matchers apropriados do Jest
+- Incluir mensagens claras nas asserções
+- Testar edge cases importantes
+
+#### 3.3 Performance
+- Otimizar setup de testes pesados
+- Usar beforeAll quando apropriado
+- Minimizar operações assíncronas
+- Agrupar testes relacionados
+- Manter testes rápidos e eficientes
+
+### 4. CHECKLIST DE IMPLEMENTAÇÃO
+
+#### 4.1 Antes dos Testes
+- [ ] Planejar casos de teste
+- [ ] Identificar dependências
+- [ ] Preparar dados de teste
+- [ ] Configurar ambiente
+- [ ] Definir mocks necessários
+
+#### 4.2 Durante os Testes
+- [ ] Seguir padrões estabelecidos
+- [ ] Documentar casos complexos
+- [ ] Validar cobertura
+- [ ] Verificar performance
+- [ ] Garantir isolamento
+
+#### 4.3 Após os Testes
+- [ ] Verificar limpeza de recursos
+- [ ] Validar cobertura final
+- [ ] Documentar decisões importantes
+- [ ] Atualizar documentação se necessário
+- [ ] Registrar lições aprendidas
+
+### 5. MÉTRICAS E QUALIDADE
+
+#### 5.1 Cobertura
+- Mínimo de 80% de cobertura geral
+- 100% de cobertura em código crítico
+- Cobertura de branches importantes
+- Validação de edge cases
+- Documentação de exclusões
+
+#### 5.2 Performance
+- Tempo máximo por teste: 5s
+- Tempo máximo por suite: 2min
+- Otimização de testes lentos
+- Monitoramento de recursos
+- Paralelização quando possível
+
+### 6. MANUTENÇÃO
+
+#### 6.1 Documentação
+- Manter documentação atualizada
+- Registrar decisões de design
+- Documentar configurações especiais
+- Manter exemplos relevantes
+- Atualizar guias conforme necessário
+
+#### 6.2 Evolução
+- Revisar testes regularmente
+- Atualizar conforme mudanças no código
+- Refatorar testes problemáticos
+- Melhorar cobertura gradualmente
+- Incorporar feedback da equipe 

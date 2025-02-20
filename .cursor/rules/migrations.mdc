@@ -1,0 +1,395 @@
+---
+description: Esta regra orienta o Cursor AI a seguir rigorosamente o processo de migrações do banco de dados
+globs: src/db/migrations/**/*.sql, scripts/db-*.ts
+---
+
+# Regras para Migrações de Banco de Dados
+
+## REGRAS DE OURO
+1. **NUNCA crie migrações que apagam tabelas sem verificação**
+2. **SEMPRE use `IF NOT EXISTS` para criação de estruturas**
+3. **NUNCA divida blocos `DO $$` em múltiplas partes**
+4. **SEMPRE inclua seção de rollback**
+5. **SEMPRE faça verificações de existência**
+6. **NUNCA altere migrações já aplicadas**
+6. **NUNCA crie migrações sem ter certeza da necessidade**
+
+## 1. Estrutura de Arquivos
+
+### 1.1 Localização
+- Todas as migrações devem estar em `src/db/migrations/`
+- Arquivos de migração devem seguir o padrão: `XXXX_descricao_clara.sql`
+- Numeração sequencial começando em 0000
+- Descrição em snake_case
+
+### 1.2 Formato do Arquivo
+```sql
+-- Migration: [nome_descritivo]
+-- Created at: [timestamp]
+-- Description: [descrição clara do propósito]
+-- Dependencies: [lista de migrações dependentes]
+-- Impact: [descrição do impacto da mudança]
+-- Decision: [justificativa das decisões tomadas]
+
+DO $$ 
+BEGIN 
+    -- Verificações de existência aqui
+    -- Operações de migração aqui
+END $$;
+
+---- ROLLBACK ----
+-- Operações de rollback aqui em ordem inversa
+```
+
+## 2. Padrões de Código
+
+### 2.1 Verificações de Existência
+```sql
+-- Para tipos
+IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '[nome_tipo]') THEN
+    -- Criar tipo
+END IF;
+
+-- Para tabelas
+IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '[nome_tabela]') THEN
+    -- Criar tabela
+END IF;
+
+-- Para colunas
+IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.columns 
+    WHERE table_name = '[nome_tabela]' 
+    AND column_name = '[nome_coluna]'
+) THEN
+    -- Adicionar coluna
+END IF;
+
+-- Para constraints
+IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.table_constraints 
+    WHERE table_name = '[nome_tabela]'
+    AND constraint_name = '[nome_constraint]'
+) THEN
+    -- Adicionar constraint
+END IF;
+
+-- Para índices
+IF NOT EXISTS (
+    SELECT 1 
+    FROM pg_indexes 
+    WHERE tablename = '[nome_tabela]'
+    AND indexname = '[nome_indice]'
+) THEN
+    -- Criar índice
+END IF;
+```
+
+### 2.2 Blocos SQL
+- NUNCA dividir blocos `DO $$` em múltiplas partes
+- Manter todo SQL de migração em um único bloco
+- Usar `sql.unsafe()` para blocos SQL complexos
+- Separar SQL e ROLLBACK com `---- ROLLBACK ----`
+- Usar `BEGIN` e `END` para cada bloco lógico
+
+### 2.3 Comentários
+- Incluir cabeçalho com nome, timestamp e descrição
+- Documentar cada operação principal
+- Manter comentários claros e concisos
+- Não remover comentários existentes
+- Documentar decisões importantes
+
+## 3. Segurança e Controle
+
+### 3.1 Verificações Obrigatórias
+- Verificar permissões antes de qualquer operação
+- Validar ambiente (prod/dev)
+- Confirmar existência de backup
+- Verificar dependências entre migrações
+- Validar integridade dos dados
+
+### 3.2 Produção
+- Exigir confirmação explícita para produção
+- Usar `CONFIRM_PRODUCTION_MIGRATION='YES_I_KNOW_WHAT_I_AM_DOING'`
+- Executar em horários de baixo tráfego
+- Manter logs detalhados
+- Ter plano de rollback testado
+
+## 4. Idempotência
+
+### 4.1 Regras de Idempotência
+- Toda migração deve ser idempotente
+- Verificar existência antes de criar/alterar
+- Usar `IF NOT EXISTS` para todas as operações
+- Tratar erros de forma não destrutiva
+- Validar estado antes e depois
+
+### 4.2 Validações
+```sql
+-- Exemplo de validação de estado
+DO $$ 
+BEGIN 
+    -- Verificar estado atual
+    IF EXISTS (SELECT 1 FROM [tabela] WHERE [condição]) THEN
+        -- Tratar caso existente
+    ELSE
+        -- Tratar caso não existente
+    END IF;
+
+    -- Validar integridade após alteração
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM [tabela] 
+        WHERE [condição_esperada]
+    ) THEN
+        RAISE EXCEPTION 'Falha na validação de integridade';
+    END IF;
+END $$;
+```
+
+## 5. Rollback
+
+### 5.1 Estrutura
+- Sempre incluir seção de rollback
+- Operações em ordem inversa
+- Verificar existência antes de remover
+- Preservar dados críticos
+- Validar estado após rollback
+
+### 5.2 Exemplo
+```sql
+---- ROLLBACK ----
+-- Fazer backup dos dados se necessário
+CREATE TABLE IF NOT EXISTS [tabela_backup] AS 
+SELECT * FROM [tabela];
+
+-- Remover novas colunas
+ALTER TABLE [tabela] DROP COLUMN IF EXISTS [coluna_nova];
+
+-- Restaurar estado anterior
+ALTER TABLE [tabela] RENAME COLUMN [coluna_temp] TO [coluna_original];
+
+-- Remover objetos temporários
+DROP TYPE IF EXISTS [tipo_temp];
+DROP TABLE IF EXISTS [tabela_backup];
+```
+
+## 6. Monitoramento
+
+### 6.1 Logs
+- Registrar início e fim de cada migração
+- Documentar erros e exceções
+- Manter histórico de execuções
+- Registrar tempo de execução
+- Registrar impacto nas tabelas
+
+### 6.2 Métricas
+- Monitorar tempo de execução
+- Verificar impacto no banco
+- Acompanhar uso de recursos
+- Registrar estatísticas
+- Monitorar locks e bloqueios
+
+## 7. Boas Práticas
+
+### 7.1 Geral
+- Uma migração = uma alteração lógica
+- Manter migrações pequenas e focadas
+- Documentar dependências entre migrações
+- Testar em ambiente de desenvolvimento
+- Validar impacto antes da execução
+
+### 7.2 Performance
+- Evitar locks longos
+- Usar transações apropriadamente
+- Considerar volume de dados
+- Otimizar operações pesadas
+- Usar índices quando necessário
+
+### 7.3 Nomenclatura
+- Nomes claros e descritivos
+- Usar snake_case
+- Incluir propósito no nome
+- Manter padrão consistente
+- Evitar nomes genéricos
+
+## 8. Checklist de Validação
+
+### 8.1 Antes da Migração
+- [ ] Verificar numeração sequencial
+- [ ] Validar sintaxe SQL
+- [ ] Confirmar idempotência
+- [ ] Testar rollback
+- [ ] Verificar permissões
+- [ ] Validar dependências
+- [ ] Criar backup
+- [ ] Verificar impacto
+- [ ] Validar ambiente
+
+### 8.2 Durante a Migração
+- [ ] Monitorar execução
+- [ ] Registrar logs
+- [ ] Verificar erros
+- [ ] Medir tempo
+- [ ] Validar alterações
+- [ ] Monitorar locks
+- [ ] Verificar bloqueios
+- [ ] Acompanhar recursos
+
+### 8.3 Após a Migração
+- [ ] Confirmar alterações
+- [ ] Verificar integridade
+- [ ] Validar funcionalidades
+- [ ] Atualizar documentação
+- [ ] Registrar métricas
+- [ ] Verificar performance
+- [ ] Validar índices
+- [ ] Atualizar testes
+
+## 9. Comandos Úteis
+
+### 9.1 Verificação
+```bash
+# Verificar estado das migrações
+npm run db:check
+
+# Verificar estrutura de tabela
+npm run db:check-table [tabela]
+
+# Verificar todas as tabelas
+npm run db:check-tables
+
+# Verificar permissões
+npm run db:check-permissions
+```
+
+### 9.2 Manutenção
+```bash
+# Executar migrações pendentes
+npm run db:migrate
+
+# Executar em produção
+npm run db:migrate:prod
+
+# Limpar migrações
+npm run db:clean-migrations
+
+# Resetar estado
+npm run db:reset
+
+# Verificar integridade
+npm run db:check-integrity
+```
+
+## 10. Tratamento de Erros
+
+### 10.1 Erros Comuns
+1. **Permissões Insuficientes**
+   - Verificar roles do usuário
+   - Confirmar grants necessários
+   - Validar conexão
+   - Verificar owner das tabelas
+
+2. **Conflitos de Schema**
+   - Verificar existência prévia
+   - Validar nomenclatura
+   - Confirmar compatibilidade
+   - Verificar constraints
+
+3. **Deadlocks**
+   - Otimizar ordem das operações
+   - Minimizar tempo de locks
+   - Usar transações apropriadamente
+   - Monitorar bloqueios
+
+4. **Problemas de Dados**
+   - Validar integridade
+   - Verificar constraints
+   - Checar relacionamentos
+   - Validar tipos de dados
+
+### 10.2 Recuperação
+1. **Erro durante migração**
+   - Executar rollback
+   - Registrar erro
+   - Restaurar backup se necessário
+   - Documentar ocorrência
+
+2. **Inconsistência de dados**
+   - Verificar integridade
+   - Corrigir manualmente
+   - Documentar correções
+   - Criar testes de prevenção
+
+3. **Falha de Performance**
+   - Analisar queries
+   - Otimizar índices
+   - Ajustar transações
+   - Reduzir locks
+
+## 11. Documentação
+
+### 11.1 Requisitos
+- Descrever propósito da migração
+- Listar dependências
+- Documentar impactos
+- Registrar decisões
+- Incluir exemplos
+- Documentar rollback
+- Registrar validações
+- Listar precauções
+
+### 11.2 Exemplo
+```sql
+-- Migration: add_user_status
+-- Created at: 2024-03-21T10:00:00Z
+-- Description: Adiciona campo de status para controle de estado do usuário
+-- Dependencies: Requer migração 0003_add_user_table
+-- Impact: Afeta queries de usuário existentes
+-- Decision: Optado por enum para garantir integridade dos dados
+-- Validation: Verificar status de usuários existentes
+-- Precautions: Executar em horário de baixo tráfego
+```
+
+## 12. Versionamento
+
+### 12.1 Regras
+- Nunca alterar migrações já aplicadas
+- Criar nova migração para correções
+- Manter histórico completo
+- Documentar alterações
+- Seguir numeração sequencial
+- Validar dependências
+- Manter consistência
+
+### 12.2 Controle
+- Usar sistema de versionamento
+- Manter backup de migrações
+- Registrar alterações
+- Documentar decisões
+- Validar sequência
+- Verificar conflitos
+- Manter histórico
+
+## 13. Proteções Críticas
+
+### 13.1 Seções Protegidas
+- Visão Geral
+- Estrutura de Diretórios
+- Processo de Criação
+- Comandos e Operações
+- Padrões e Regras
+
+### 13.2 Seções Evolutivas
+- Histórico de Migrações
+- Registro de Problemas
+- Lições Aprendidas
+- Métricas e Evolução
+
+### 13.3 Confirmações Necessárias
+- Alterações em seções protegidas
+- Execução em produção
+- Operações destrutivas
+- Movimentação de arquivos
+- Alterações estruturais

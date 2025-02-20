@@ -9,6 +9,7 @@ import { users, subscriptions } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import Stripe from "stripe";
 import { sendAccountBlockedNotification } from '@/utils/notifications/sendNotifications';
+import { logWebhookEvent, updateWebhookStatus } from '@/lib/webhooks/logger/webhook-logger';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -18,28 +19,27 @@ type ExtendedWebhookEvent = WebhookEvent & {
 };
 
 export async function POST(req: Request) {
+  let webhookEventId: string | undefined;
+  
   try {
     // You can find this in the Clerk Dashboard -> Webhooks -> choose the webhook
     const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
-    console.log('📨 Webhook received');
+    console.log('📨 Webhook recebido do Clerk');
 
     if (!WEBHOOK_SECRET) {
-      console.error('❌ CLERK_WEBHOOK_SECRET not found in environment');
-      throw new Error(
-        "Please add WEBHOOK_SECRET from Clerk Dashboard to .env or .env.local"
-      );
+      throw new Error("CLERK_WEBHOOK_SECRET não encontrado no ambiente");
     }
 
     // Get the headers
     const headerPayload = await headers();
-    const svix_id = headerPayload.get("svix-id");
-    const svix_timestamp = headerPayload.get("svix-timestamp");
-    const svix_signature = headerPayload.get("svix-signature");
+    const svix_id = headerPayload.get("svix-id") || '';
+    const svix_timestamp = headerPayload.get("svix-timestamp") || '';
+    const svix_signature = headerPayload.get("svix-signature") || '';
 
     // If there are no headers, error out
     if (!svix_id || !svix_timestamp || !svix_signature) {
-      console.error('❌ Missing Svix headers:', { svix_id, svix_timestamp, svix_signature });
+      console.error('❌ Headers Svix ausentes:', { svix_id, svix_timestamp, svix_signature });
       return new Response("Error occured -- no svix headers", {
         status: 400,
       });
@@ -47,13 +47,14 @@ export async function POST(req: Request) {
 
     // Get the body
     const payload = await req.json();
-    console.log('📦 Webhook payload received:', {
+    const body = JSON.stringify(payload);
+
+    console.log('📦 Payload do webhook recebido:', {
       type: payload.type,
       userId: payload?.data?.id,
-      email: payload?.data?.email_addresses?.[0]?.email_address
+      email: payload?.data?.email_addresses?.[0]?.email_address,
+      timestamp: new Date().toISOString()
     });
-    
-    const body = JSON.stringify(payload);
 
     // Create a new SVIX instance with your secret.
     const wh = new Webhook(WEBHOOK_SECRET);
@@ -67,9 +68,9 @@ export async function POST(req: Request) {
         "svix-timestamp": svix_timestamp,
         "svix-signature": svix_signature,
       }) as WebhookEvent;
-      console.log('✅ Webhook signature verified');
+      console.log('✅ Assinatura do webhook verificada');
     } catch (err) {
-      console.error("❌ Error verifying webhook:", err);
+      console.error("❌ Erro ao verificar webhook:", err);
       return new Response("Error occured", {
         status: 400,
       });
@@ -77,33 +78,91 @@ export async function POST(req: Request) {
 
     // Get the ID and type
     const { id } = evt.data;
-    // TODO: Remover any quando o Clerk adicionar os tipos user.banned e user.blocked
+    webhookEventId = id;
     const eventType = (evt as any).type;
 
-    console.log('🎯 Processing webhook event:', { type: eventType, userId: id });
+    if (!id) {
+      console.error('❌ ID do evento ausente no payload do webhook');
+      return new Response("Error occured -- missing event ID", {
+        status: 400,
+      });
+    }
+
+    console.log('🎯 Iniciando processamento do webhook:', {
+      type: eventType,
+      userId: id,
+      timestamp: new Date().toISOString()
+    });
+
+    // Log webhook event
+    await logWebhookEvent(
+      'clerk',
+      id,
+      eventType,
+      payload,
+      {
+        'svix-id': svix_id,
+        'svix-timestamp': svix_timestamp,
+        'svix-signature': svix_signature
+      }
+    );
+
+    // Update status to processing
+    await updateWebhookStatus(id, 'processing');
 
     let response: Response;
 
-    switch (eventType) {
-      case "user.created":
-        response = await handleUserCreated(payload);
-        break;
-      case "user.updated":
-        response = await handleUserUpdated(payload);
-        break;
-      case "user.deleted":
-        response = await handleUserDeleted(payload);
-        break;
-      default:
-        console.warn('⚠️ Unhandled event type:', eventType);
-        response = new Response("Error occured -- unhandeled event type", {
-          status: 400,
-        });
+    try {
+      console.log('⚙️ Processando evento:', { type: eventType, id });
+      
+      switch (eventType) {
+        case "user.created":
+          response = await handleUserCreated(payload);
+          break;
+        case "user.updated":
+          response = await handleUserUpdated(payload);
+          break;
+        case "user.deleted":
+          response = await handleUserDeleted(payload);
+          break;
+        default:
+          console.warn('⚠️ Tipo de evento não tratado:', eventType);
+          response = new Response("Error occured -- unhandeled event type", {
+            status: 400,
+          });
+      }
+
+      // Atualiza o status para completed ANTES de retornar a resposta
+      console.log('✅ Evento processado com sucesso:', { type: eventType, id });
+      await updateWebhookStatus(id, 'completed');
+      
+      return response;
+    } catch (error: any) {
+      console.error('❌ Erro no processamento do evento:', {
+        type: eventType,
+        id,
+        error: error.message,
+        stack: error.stack
+      });
+      
+      // Update status to failed
+      await updateWebhookStatus(id, 'failed', error.message);
+      throw error;
+    }
+  } catch (error: any) {
+    console.error('❌ Erro geral no webhook:', {
+      eventId: webhookEventId,
+      error: error.message,
+      stack: error.stack
+    });
+
+    // Se temos o ID do evento e ainda não atualizamos o status para failed
+    if (webhookEventId) {
+      await updateWebhookStatus(webhookEventId, 'failed', 
+        `Erro geral: ${error.message}`
+      );
     }
 
-    return response;
-  } catch (error: any) {
-    console.error('❌ Error processing webhook:', error);
     return new Response("Error occured", {
       status: 500,
     });

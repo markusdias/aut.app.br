@@ -1,0 +1,175 @@
+---
+description: Esta regra destina-se a armazenar e consultar lições aprendidas para melhorar a geração de código.
+globs: .cursor/learning/**/*.{mdc,md}
+---
+## RESTRIÇÕES (O QUE NÃO DEVE SER FEITO)
+
+### 1. Arquitetura e Estrutura
+- NÃO criar arquivos desnecessários que compliquem a estrutura
+- NÃO ignorar a causa raiz dos problemas
+- NÃO repetir estratégias que falharam múltiplas vezes
+- NÃO criar estruturas complexas sem necessidade
+- NÃO misturar responsabilidades em um mesmo arquivo
+
+### 2. Testes
+- NÃO deixar testes interdependentes
+- NÃO criar mocks desnecessariamente complexos
+- NÃO ignorar testes de edge cases
+- NÃO misturar diferentes tipos de testes no mesmo arquivo
+- NÃO deixar de limpar o estado após os testes
+
+### 3. Desenvolvimento
+- NÃO ignorar sinais de warning persistentes
+- NÃO fazer suposições sem consultar documentação
+- NÃO implementar sem um TODO*.md como guia
+- NÃO deixar arquivos com erros ou bugs
+- NÃO usar caminhos relativos para importações
+
+## DIRETRIZES (O QUE DEVE SER FEITO)
+
+### 1. Arquitetura e Estrutura
+- SEMPRE manter a simplicidade do código
+- SEMPRE documentar decisões arquiteturais
+- SEMPRE seguir padrões estabelecidos
+- SEMPRE usar aliases (@/) para importações
+- SEMPRE organizar arquivos conforme a estrutura definida
+
+### 2. Testes
+- SEMPRE implementar setup completo dos testes
+- SEMPRE testar edge cases
+- SEMPRE garantir limpeza após os testes
+- SEMPRE documentar os testes adequadamente
+- SEMPRE separar diferentes tipos de teste
+
+### 3. Desenvolvimento
+- SEMPRE consultar documentação antes de implementar
+- SEMPRE manter documentação atualizada
+- SEMPRE usar configurações flexíveis
+- SEMPRE implementar logging estruturado
+- SEMPRE validar implementações com testes
+
+## PROCESSO DE DESENVOLVIMENTO
+
+### 1. Antes de Implementar
+- [ ] Verificar existência de TODO*.md
+- [ ] Consultar documentação relevante
+- [ ] Validar estrutura do projeto
+- [ ] Confirmar requisitos claros
+- [ ] Planejar testes necessários
+
+### 2. Durante a Implementação
+- [ ] Seguir padrões estabelecidos
+- [ ] Manter código simples e modular
+- [ ] Documentar decisões importantes
+- [ ] Implementar testes junto com o código
+- [ ] Validar importações e dependências
+
+### 3. Após a Implementação
+- [ ] Executar todos os testes
+- [ ] Verificar cobertura de testes
+- [ ] Validar qualidade do código
+- [ ] Atualizar documentação
+- [ ] Registrar lições aprendidas
+
+### 0. Consulta de Lições Aprendidas
+- [ ] Verificar `.cursor/learning/lessons-learned.md`
+- [ ] Identificar padrões ou soluções aplicáveis
+- [ ] Avaliar contexto similar
+- [ ] Aplicar soluções comprovadas
+- [ ] Solicitar confirmação em casos não documentados
+
+## REGISTRO DE LIÇÕES APRENDIDAS
+
+### 1. Localização
+- SEMPRE registrar em `.cursor/learning/lessons-learned.md`
+- Manter arquivo acessível entre projetos
+- Organizar por categorias claras
+- Indexar para fácil consulta
+
+### 2. Estrutura do Registro
+- **Problema:** Descrição clara do problema encontrado
+- **Contexto:** Situação e ambiente onde ocorreu
+- **Solução:** Detalhamento da solução aplicada
+- **Código:** Exemplo prático da implementação
+- **Resultado:** Confirmação do sucesso da solução
+- **Tags:** Palavras-chave para busca
+
+### 3. Processo de Registro
+- Identificar situações recorrentes
+- Documentar erros e soluções
+- Registrar padrões bem-sucedidos
+- Atualizar com novos aprendizados
+- Validar soluções antes do registro
+
+### 4. Consulta e Aplicação
+- Consultar antes de implementar
+- Verificar similaridade de contexto
+- Adaptar soluções quando necessário
+- Validar eficácia da aplicação
+- Registrar adaptações bem-sucedidas
+
+## MÉTRICAS DE QUALIDADE
+
+### 1. Pontuação
+- +10 pontos: Código que roda sem erros
+- -5 pontos: Bugs de gravidade baixa
+- -10 pontos: Bugs de gravidade média
+- -20 pontos: Bugs de gravidade alta
+
+### 2. Critérios de Avaliação
+- Funcionalidade: código atende aos requisitos
+- Qualidade: código segue padrões estabelecidos
+- Testabilidade: código possui testes adequados
+- Manutenibilidade: código é fácil de manter
+- Documentação: código está bem documentado
+
+## OBSERVAÇÕES IMPORTANTES
+
+1. **Documentação**
+   - Manter documentação sempre atualizada
+   - Registrar decisões importantes
+   - Documentar lições aprendidas
+
+2. **Testes**
+   - Implementar testes para todas as funcionalidades
+   - Garantir cobertura adequada
+   - Manter testes organizados e documentados
+
+3. **Qualidade**
+   - Seguir padrões estabelecidos
+   - Manter código simples e modular
+   - Evitar duplicação de código
+
+4. **Manutenção**
+   - Facilitar manutenção futura
+   - Documentar pontos críticos
+   - Manter código organizado
+
+## VALIDAÇÃO DE ESTRUTURA
+
+### 1. Antes de Criar/Modificar Arquivos
+- Verificar existência do arquivo em toda a estrutura
+- Identificar localização correta conforme estrutura definida
+- Validar se o diretório está nos globs permitidos
+- Confirmar padrão de nomenclatura
+
+### 2. Processo de Movimentação
+- Identificar tipo e finalidade do arquivo
+- Determinar diretório correto
+- Validar impacto da movimentação
+- Atualizar todas as referências
+- Confirmar funcionamento após mudança
+
+### 3. Atualização de Dependências
+- Usar padrão de importação com alias (@/)
+- Atualizar todas as referências afetadas
+- Validar imports em arquivos relacionados
+- Confirmar resolução de módulos
+- Testar após atualizações
+
+### 4. Documentação de Alterações
+- Registrar arquivos movidos/alterados
+- Documentar atualizações de referências
+- Confirmar aderência à estrutura
+- Solicitar validação quando necessário
+- Manter histórico de alterações 

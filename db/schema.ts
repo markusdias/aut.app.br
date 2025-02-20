@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, boolean, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, boolean, jsonb, pgEnum, uuid } from "drizzle-orm/pg-core";
 
 // Define o enum para status do usuário
 export const userStatusEnum = pgEnum('user_status', ['active', 'blocked', 'banned', 'deleted']);
@@ -67,4 +67,19 @@ export const invoices = pgTable("invoices", {
   periodStart: timestamp("period_start"),
   periodEnd: timestamp("period_end"),
   paymentIntent: text("payment_intent"),
+});
+
+export const webhook_events = pgTable("webhook_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  event_id: text("event_id").notNull(),
+  event_type: text("event_type").notNull(),
+  provider: text("provider").notNull(),
+  status: text("status").notNull().default('pending'),
+  raw_data: jsonb("raw_data"),
+  error: text("error"),
+  retry_count: serial("retry_count").default(0),
+  last_retry_time: timestamp("last_retry_time"),
+  created_time: timestamp("created_time").notNull().defaultNow(),
+  processed_time: timestamp("processed_time"),
+  metadata: jsonb("metadata")
 });

@@ -122,6 +122,88 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you find this template helpful, please give it a ⭐️ on GitHub!
 
+## Documentação Detalhada
+
+### Estrutura do Projeto
+O projeto segue uma estrutura modular e organizada, com diretórios específicos para cada funcionalidade:
+
+```
+src/
+├── app/                 # Core da aplicação
+├── core-api/           # APIs principais
+├── webhooks/           # Sistema de Webhooks
+├── integrations/       # Integrações externas
+├── pages/             # Pages (Next.js)
+├── features/          # Features isoladas
+├── components/        # Componentes React/UI
+├── hooks/            # Hooks globais
+├── types/            # Tipos TypeScript
+├── utils/            # Utilitários
+├── queue/            # Sistema de Filas
+├── cache/            # Sistema de Cache
+├── events/           # Sistema de Eventos
+├── security/         # Segurança
+├── monitoring/       # Monitoramento
+└── background/       # Tarefas em background
+```
+
+### Fluxos Principais
+
+#### Autenticação e Autorização
+- Integração completa com Clerk
+- Middleware de proteção de rotas
+- Webhooks para sincronização de usuários
+- Gestão de sessões e tokens
+
+#### Sistema de Assinaturas (Stripe)
+- Hierarquia: Produto > Preço > Assinatura > Fatura
+- Webhooks para processamento de eventos
+- Gestão de planos e benefícios
+- Sistema de checkout integrado
+
+#### Banco de Dados
+- Migrações gerenciadas via scripts
+- Comandos para manutenção e verificação
+- Sistema de backup automático
+- Sincronização com serviços externos
+
+### Boas Práticas
+1. **Desenvolvimento**
+   - Código tipado com TypeScript
+   - Componentes funcionais React
+   - Testes automatizados
+   - Documentação atualizada
+
+2. **Segurança**
+   - Validação de dados
+   - Proteção contra ataques
+   - Logs de auditoria
+   - Backups regulares
+
+3. **Performance**
+   - Otimização de imagens
+   - Carregamento lazy
+   - Caching estratégico
+   - Monitoramento contínuo
+
+### Comandos Importantes
+```bash
+# Desenvolvimento
+npm run dev           # Inicia servidor de desenvolvimento
+npm run build        # Build de produção
+npm run start        # Inicia servidor de produção
+
+# Banco de Dados
+npm run db:check     # Verifica estado das migrações
+npm run db:reset     # Reset completo do banco
+npm run db:clean     # Limpa dados específicos
+
+# Stripe
+npm run sync:plans   # Sincroniza planos com Stripe
+```
+
+Para mais detalhes sobre cada aspecto do projeto, consulte as seções específicas desta documentação.
+
 ## Gerenciamento do Banco de Dados
 
 ### Comandos Disponíveis

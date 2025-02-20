@@ -1,0 +1,79 @@
+---
+description: Esta regra define diretrizes de boas práticas e convenções para a escrita de código em projetos que utilizam TypeScript, Node.js, Next.js (App Router), React, Shadcn UI, Radix UI e Tailwind CSS
+globs: app/**/*.{ts,tsx}, components/**/*.{ts,tsx}, hooks/**/*.{ts,tsx}, pages/**/*.{ts,tsx}, src/**/*.{ts,tsx}, tests/**/*.{ts,tsx}
+---
+# Description
+Esta regra define diretrizes de boas práticas e convenções para a escrita de código em projetos que utilizam TypeScript, Node.js, Next.js (App Router), React, Shadcn UI, Radix UI e Tailwind CSS. O objetivo é garantir que o código gerado seja conciso, técnico, modular e aderente a padrões de alta qualidade, facilitando a manutenção e o desempenho da aplicação.
+
+# Globs
+- `app/**/*.{ts,tsx}`
+- `components/**/*.{ts,tsx}`
+- `hooks/**/*.{ts,tsx}`
+- `pages/**/*.{ts,tsx}`
+- `src/**/*.{ts,tsx}`
+- `tests/**/*.{ts,tsx}`
+
+## Princípios Fundamentais
+- **Princípio Básico 1. Planejamento:** TODA implementação deve ser orientada por uma TODO*. md. NUNCA implemente se não houveer um TODO*.md como guia. A implementação deve existir para atender algum ponto descrito no TODO.
+- **Princípio Básico 2. TODO*.md:** Deverá existir um TODO*.md em docs/ que guiará as implementações. Caso não exista, não implemente. Ajude a criar um TODO para as novas funcionalidades, fazendo perguntas. O TODO final deverá ser consistênte, sem ambiguidades, claro, deverá orientar e ser um mapa do desenvolvimento. Somentte passe adiante para implementação quando não restar dúvidas do que será feito. Tudo deverá ser previsto neste plano TODO.
+- **Código Conciso e Técnico:** Escreva exemplos precisos em TypeScript, sem redundâncias.
+- **Programação Funcional e Declarativa:** Utilize funções puras (usando a palavra-chave `function`) e evite classes.
+- **Iteração e Modularização:** Prefira estruturas iterativas e modulares, evitando duplicação de código.
+- **Nomes Descritivos:** Utilize nomes de variáveis e funções que indiquem claramente suas intenções, preferindo verbos auxiliares (ex.: `isLoading`, `hasError`).
+- **Estrutura de Arquivos Organizada:** Mantenha os arquivos organizados com:
+  - Componente exportado principal;
+  - Subcomponentes relacionados;
+  - Helpers e funções utilitárias;
+  - Conteúdo estático;
+  - Definições de tipos e interfaces.
+- **Fontes de Documentações:** Consulte documentações oficiais de componentes, dependências e outras fontes externas para utilizar objetos, importações, etc. da forma correta. Não suponha nunca. Sempre verifique se os objetos utilizados no seu código utilizam parâmetros corretos para evitar bugs em qualquer fase do desenvolvimento.
+- **IMPORTAÇÕES E REFERÊNCIAS:**
+- NUNCA utilizar caminhos relativos (../../) para importações
+- SEMPRE utilizar aliases (paths) configurados no tsconfig.json/jsconfig.json
+- **CONFIGURAÇÃO DE ALIASES:**
+- Manter aliases documentados e atualizados em tsconfig.json/jsconfig.json
+- Seguir padrão de prefixo @ para todos os aliases
+- Aliases devem refletir a estrutura de pastas do projeto
+- **ANTES DE IMPLEMENTAÇÕES:** Sempre avaliar causas raízes, faça análise profunda, identifique os arquivos envolvidos sejam eles fontes ou que serão impactados.
+- **APÓS IMPLEMENTAÇÕES:** Depois de realizar implementações, avalie os arquivos que dependem ou são influenciados pelo que você editou para evitar bugs em arquivos consequentes. Se for o caso, efetue testes para garantir a eficácia da implementação respeitando rules de testes.
+
+## Convenções de Nomenclatura
+- **Diretórios:** Use letras minúsculas com hífens (ex.: `components/auth-wizard`).
+- **Exportações:** Prefira exportações nomeadas para componentes.
+
+## Uso do TypeScript
+- Utilize TypeScript em todos os arquivos de código.
+- Prefira **interfaces** em vez de types para definir contratos.
+- Evite **enums**; opte por objetos ou mapas quando necessário.
+- Crie componentes funcionais tipados com interfaces.
+
+## Sintaxe e Formatação
+- Utilize a palavra-chave `function` para definir funções puras.
+- Evite chaves desnecessárias em condicionais e prefira sintaxes mais concisas para declarações simples.
+- Utilize JSX de forma declarativa para compor a interface.
+
+## UI e Estilização
+- Construa componentes utilizando Shadcn UI, Radix UI e Tailwind CSS.
+- Implemente design responsivo com Tailwind, adotando uma abordagem **mobile-first**.
+
+## Otimização de Performance
+- Minimize o uso de `use client`, `useEffect` e `setState`; prefira React Server Components (RSC) sempre que possível.
+- Envolva componentes clientes em `<Suspense>` com fallback.
+- Utilize carregamento dinâmico para componentes não críticos.
+- Otimize imagens: use o formato WebP, defina dimensões e implemente lazy loading.
+
+## Convenções Adicionais
+- Utilize `nuqs` para gerenciamento do estado dos parâmetros de busca na URL.
+- Priorize a otimização dos Web Vitals (LCP, CLS, FID).
+- Limite o uso de `use client`:
+  - Prefira componentes de servidor e SSR do Next.js.
+  - Use `use client` apenas para acesso a APIs Web em componentes pequenos.
+  - Evite seu uso para data fetching ou gerenciamento de estado.
+- Siga a documentação oficial do Next.js para Data Fetching, Rendering e Routing.
+
+## Restrições
+- Não deixe arquivos implementados ou editados com erros ou bugs
+
+## Checklist de Validação
+- Após editar ou criar arquivos faça um checklist e verifique se atendeu todas as regras citadas na rule principios.mdc
+
