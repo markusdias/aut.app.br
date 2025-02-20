@@ -186,8 +186,8 @@ export async function POST(req: Request) {
 
         // Update status to failed
         await updateWebhookStatus(event.id, 'failed', error.message);
-        throw error;
-      }
+              throw error;
+            }
     } else {
       console.log('ℹ️ Evento não relevante ignorado:', {
         type: event.type,

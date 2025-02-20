@@ -1,6 +1,7 @@
 import { db } from "@/db/drizzle";
 import { webhook_events } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { WebhookUserResolutionService } from "../../../src/webhooks/services/user-resolution.service";
 
 // Feature flag para controle de logging
 const ENABLE_WEBHOOK_LOGGING = process.env.ENABLE_WEBHOOK_LOGGING === 'true';
@@ -25,13 +26,34 @@ export async function logWebhookEvent(
     hasHeaders: !!headers
   });
 
+  const userResolutionService = new WebhookUserResolutionService();
+
   try {
+    // Construir payload no formato correto
+    const formattedPayload = {
+      type: eventType,
+      data: {
+        object: payload
+      }
+    };
+
+    // Resolver usuário
+    const { userId, metadata: resolutionMetadata } = 
+      await userResolutionService.resolveUserId(provider, formattedPayload);
+
+    console.log('👤 Resolução de usuário:', {
+      eventId,
+      userId: userId || 'não encontrado',
+      success: resolutionMetadata.success
+    });
+
     await db.insert(webhook_events).values({
       event_id: eventId,
       event_type: eventType,
       provider,
       status: 'pending',
       raw_data: payload,
+      user_id: userId,
       metadata: {
         headers,
         received_at: new Date().toISOString(),
@@ -39,9 +61,15 @@ export async function logWebhookEvent(
           initial_status: 'pending',
           feature_flag: ENABLE_WEBHOOK_LOGGING
         }
-      }
+      },
+      user_resolution_metadata: resolutionMetadata
     });
-    console.log('✅ Webhook registrado com sucesso:', { eventId, status: 'pending' });
+
+    console.log('✅ Webhook registrado com sucesso:', { 
+      eventId, 
+      status: 'pending',
+      userId: userId || 'não encontrado'
+    });
   } catch (error) {
     console.error('❌ Falha ao registrar webhook:', {
       error,

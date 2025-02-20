@@ -36,6 +36,8 @@ interface WebhookEvent {
   created_time: string;
   processed_time?: string;
   error?: string;
+  user_email?: string;
+  user_name?: string;
 }
 
 interface PaginationInfo {
@@ -328,6 +330,7 @@ export default function LogsView() {
                     <TableHead>Data</TableHead>
                     <TableHead>Provider</TableHead>
                     <TableHead>Evento</TableHead>
+                    <TableHead>Usuário</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Processado em</TableHead>
                   </TableRow>
@@ -345,6 +348,16 @@ export default function LogsView() {
                         <div className="font-mono text-sm truncate" title={event.event_type}>
                           {event.event_type.replace(/[^\x20-\x7E]/g, '')}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {event.user_email ? (
+                          <div className="flex flex-col">
+                            <span className="text-sm">{event.user_name || 'N/A'}</span>
+                            <span className="text-xs text-muted-foreground">{event.user_email}</span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Não associado</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span className={getStatusColor(event.status)}>
