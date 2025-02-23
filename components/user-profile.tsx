@@ -17,17 +17,15 @@ import {
 import config from "@/config"
 import { SignOutButton, useUser } from "@clerk/nextjs"
 import {
-    CreditCard,
     LogOut,
     Settings,
-    Sparkles,
     User
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Button } from "./ui/button"
+import { Button } from "@/components/ui/button"
 import { useState } from "react"
-import { UpgradePlanModal } from "./upgrade-plan-modal"
+import { UpgradePlanModal } from "@/components/upgrade-plan-modal"
 
 export function UserProfile() {
     const router = useRouter()

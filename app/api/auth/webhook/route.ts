@@ -18,6 +18,45 @@ type ExtendedWebhookEvent = WebhookEvent & {
   type: WebhookEvent["type"] | "user.banned" | "user.blocked";
 };
 
+// Interface para o request do webhook
+interface WebhookHttpRequest {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
+// Interface para o payload do webhook
+interface WebhookPayload {
+  type: string;
+  timestamp?: string;
+  event_attributes?: {
+    http_request?: WebhookHttpRequest;
+  };
+  data?: {
+    id?: string;
+    email_addresses?: Array<{
+      email_address?: string;
+    }>;
+    first_name?: string;
+    last_name?: string;
+    profile_image_url?: string;
+    locked?: boolean;
+    banned?: boolean;
+    deleted?: boolean;
+    lockout_expires_in_seconds?: number;
+    public_metadata?: {
+      block_reason?: string;
+    };
+  };
+}
+
+// Interface para erros
+interface WebhookError extends Error {
+  message: string;
+  stack?: string;
+}
+
 export async function POST(req: Request) {
   let webhookEventId: string | undefined;
   
@@ -46,7 +85,7 @@ export async function POST(req: Request) {
     }
 
     // Get the body
-    const payload = await req.json();
+    const payload = (await req.json()) as WebhookPayload;
     const body = JSON.stringify(payload);
 
     console.log('📦 Payload do webhook recebido:', {
@@ -59,7 +98,7 @@ export async function POST(req: Request) {
     // Create a new SVIX instance with your secret.
     const wh = new Webhook(WEBHOOK_SECRET);
 
-    let evt: WebhookEvent;
+    let evt: ExtendedWebhookEvent;
 
     // Verify the payload with the headers
     try {
@@ -67,7 +106,7 @@ export async function POST(req: Request) {
         "svix-id": svix_id,
         "svix-timestamp": svix_timestamp,
         "svix-signature": svix_signature,
-      }) as WebhookEvent;
+      }) as ExtendedWebhookEvent;
       console.log('✅ Assinatura do webhook verificada');
     } catch (err) {
       console.error("❌ Erro ao verificar webhook:", err);
@@ -79,7 +118,7 @@ export async function POST(req: Request) {
     // Get the ID and type
     const { id } = evt.data;
     webhookEventId = id;
-    const eventType = (evt as any).type;
+    const eventType = evt.type;
 
     if (!id) {
       console.error('❌ ID do evento ausente no payload do webhook');
@@ -137,29 +176,31 @@ export async function POST(req: Request) {
       await updateWebhookStatus(id, 'completed');
       
       return response;
-    } catch (error: any) {
+    } catch (error) {
+      const err = error as WebhookError;
       console.error('❌ Erro no processamento do evento:', {
         type: eventType,
         id,
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
       
       // Update status to failed
-      await updateWebhookStatus(id, 'failed', error.message);
+      await updateWebhookStatus(id, 'failed', err.message);
       throw error;
     }
-  } catch (error: any) {
+  } catch (error) {
+    const err = error as WebhookError;
     console.error('❌ Erro geral no webhook:', {
       eventId: webhookEventId,
-      error: error.message,
-      stack: error.stack
+      error: err.message,
+      stack: err.stack
     });
 
     // Se temos o ID do evento e ainda não atualizamos o status para failed
     if (webhookEventId) {
       await updateWebhookStatus(webhookEventId, 'failed', 
-        `Erro geral: ${error.message}`
+        `Erro geral: ${err.message}`
       );
     }
 
@@ -170,7 +211,7 @@ export async function POST(req: Request) {
 }
 
 // Handler functions
-async function handleUserCreated(payload: any): Promise<Response> {
+async function handleUserCreated(payload: WebhookPayload): Promise<Response> {
   try {
     const email = payload?.data?.email_addresses?.[0]?.email_address;
     const userId = payload?.data?.id;
@@ -235,8 +276,8 @@ async function handleUserCreated(payload: any): Promise<Response> {
     console.log('📝 Creating new user:', { email, userId });
     await userCreate({
       email,
-      first_name: payload?.data?.first_name,
-      last_name: payload?.data?.last_name,
+      first_name: payload?.data?.first_name || '',
+      last_name: payload?.data?.last_name || '',
       profile_image_url: payload?.data?.profile_image_url,
       user_id: userId,
     });
@@ -245,22 +286,32 @@ async function handleUserCreated(payload: any): Promise<Response> {
       status: 200,
       message: "User info inserted"
     });
-  } catch (error: any) {
-    console.error('❌ Error processing user.created webhook:', error);
+  } catch (error) {
+    const err = error as WebhookError;
+    console.error('❌ Error processing user.created webhook:', err);
     return NextResponse.json({
-      status: 400,
-      message: error.message
+      status: 500,
+      message: err.message
     });
   }
 }
 
-async function handleUserUpdated(payload: any): Promise<Response> {
+async function handleUserUpdated(payload: WebhookPayload): Promise<Response> {
   try {
     const userId = payload?.data?.id;
     const email = payload?.data?.email_addresses?.[0]?.email_address;
     const isLocked = payload?.data?.locked === true;
     const isBanned = payload?.data?.banned === true;
     
+    // Validação inicial
+    if (!userId || !email) {
+      console.error('❌ Missing required fields in user.updated event');
+      return NextResponse.json({
+        status: 400,
+        message: "Missing required fields"
+      });
+    }
+
     // Log detalhado para debugging
     console.log('👤 User update event received:', {
       userId,
@@ -273,9 +324,9 @@ async function handleUserUpdated(payload: any): Promise<Response> {
 
     // Primeiro atualiza os dados básicos do usuário
     await userUpdate({
-      email: email,
-      first_name: payload?.data?.first_name,
-      last_name: payload?.data?.last_name,
+      email,
+      first_name: payload?.data?.first_name || '',
+      last_name: payload?.data?.last_name || '',
       profile_image_url: payload?.data?.profile_image_url,
       user_id: userId,
     });
@@ -312,19 +363,21 @@ async function handleUserUpdated(payload: any): Promise<Response> {
       status: 200,
       message: "User info updated"
     });
-  } catch (error: any) {
-    console.error('❌ Error processing user.updated webhook:', error);
+  } catch (error) {
+    const err = error as WebhookError;
+    console.error('❌ Error processing user.updated webhook:', err);
     return NextResponse.json({
-      status: 400,
-      message: error.message
+      status: 500,
+      message: err.message
     });
   }
 }
 
-async function handleUserDeleted(payload: any): Promise<Response> {
+async function handleUserDeleted(payload: WebhookPayload): Promise<Response> {
   try {
-    const { id: userId, deleted } = payload.data;
-    const timestamp = new Date(payload.timestamp);
+    const userId = payload?.data?.id;
+    const deleted = payload?.data?.deleted;
+    const timestamp = payload.timestamp ? new Date(payload.timestamp) : new Date();
     
     console.log('🗑️ User deletion event received:', {
       userId,
@@ -333,39 +386,39 @@ async function handleUserDeleted(payload: any): Promise<Response> {
       requestInfo: payload.event_attributes?.http_request
     });
 
-    if (!deleted) {
-      console.warn('⚠️ Received user.deleted event but deleted flag is false');
+    if (!deleted || !userId) {
+      console.warn('⚠️ Received user.deleted event but deleted flag is false or missing userId');
       return NextResponse.json({
         status: 400,
-        message: "Invalid delete event - deleted flag is false"
+        message: "Invalid delete event - deleted flag is false or missing userId"
       });
     }
 
-    await handleUserStatusChange(userId, "deleted", timestamp);
+    await handleUserStatusChange(userId, "deleted");
 
     return NextResponse.json({
       status: 200,
       message: "User marked as deleted and subscriptions cancelled",
       timestamp: timestamp.toISOString()
     });
-  } catch (error: any) {
-    console.error('❌ Error processing user.deleted webhook:', error);
+  } catch (error) {
+    const err = error as WebhookError;
+    console.error('❌ Error processing user.deleted webhook:', err);
     return NextResponse.json({
       status: 500,
-      message: error.message
+      message: err.message
     });
   }
 }
 
 // Helper functions
-async function handleUserStatusChange(userId: string, status: "blocked" | "banned" | "deleted", timestamp?: Date) {
+async function handleUserStatusChange(userId: string, status: "blocked" | "banned" | "deleted") {
   // Atualiza o status do usuário
   await db
     .update(users)
     .set({ 
       status,
-      subscription: null,
-      ...(timestamp && { deletedAt: timestamp })
+      subscription: null
     })
     .where(eq(users.userId, userId));
 
@@ -392,7 +445,7 @@ async function handleUserStatusChange(userId: string, status: "blocked" | "banne
           .update(subscriptions)
           .set({
             status: "cancelled",
-            canceledAt: timestamp || new Date()
+            canceledAt: new Date()
           })
           .where(eq(subscriptions.subscriptionId, subscription.subscriptionId));
 

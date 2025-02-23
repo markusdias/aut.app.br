@@ -1,5 +1,6 @@
 "use client";
 
+// UI Components
 import ModeToggle from "@/components/mode-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,8 +15,8 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { useChat } from "ai/react";
-import { AnimatePresence, motion } from "framer-motion";
+
+// Icons
 import {
   ArrowUp,
   Bot,
@@ -27,12 +28,24 @@ import {
   Share,
   Sparkles,
 } from "lucide-react";
+
+// Next.js
 import Link from "next/link";
+
+// React and Hooks
 import { useState } from "react";
+import { useChat } from "ai/react";
+
+// Animation
+import { AnimatePresence, motion } from "framer-motion";
+
+// Markdown and Syntax Highlighting
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+import type { ComponentPropsWithoutRef } from 'react';
 
+// Types
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -40,8 +53,7 @@ interface Message {
   timestamp: Date;
 }
 
-interface CodeProps {
-  node?: any;
+interface CodeProps extends ComponentPropsWithoutRef<'code'> {
   inline?: boolean;
   className?: string;
   children?: React.ReactNode;
@@ -86,7 +98,7 @@ export default function PlaygroundPage() {
     });
 
   const components = {
-    code({ node, inline, className, children, ...props }: CodeProps) {
+    code({ inline, className, children, ...props }: CodeProps) {
       const match = /language-(\w+)/.exec(className || '');
       const language = match ? match[1] : 'text';
       const code = String(children).replace(/\n$/, '');
@@ -278,7 +290,7 @@ export default function PlaygroundPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleSubmit();
+                    handleSubmit(e);
                   }
                 }}
                 placeholder="Send a message..."
@@ -287,7 +299,7 @@ export default function PlaygroundPage() {
               <div className="absolute bottom-3 right-3">
                 <Button
                   size="sm"
-                  onClick={handleSubmit}
+                  onClick={(e) => handleSubmit(e)}
                   disabled={isLoading || !input.trim()}
                   className="h-8 bg-white hover:bg-zinc-200 text-black"
                 >

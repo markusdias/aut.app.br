@@ -10,10 +10,11 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SubscriptionPlan } from "@/utils/data/plans/getSubscriptionPlans";
+import { User } from "@clerk/nextjs/server";
 
 type PricingCardProps = {
-  user: any;
-  handleCheckout: any;
+  user: User | null;
+  handleCheckout: (priceId: string, isYearly: boolean) => Promise<void>;
   plan: SubscriptionPlan;
   isYearly?: boolean;
   isCurrentPlan?: boolean;
@@ -38,16 +39,6 @@ export function PricingCard({
     ? parseFloat(plan.yearlyPrice || "0")
     : parseFloat(plan.monthlyPrice || "0");
   const priceId = isYearly ? plan.yearlyPriceId : plan.monthlyPriceId;
-
-  console.log('DEBUG - PricingCard:', {
-    planName: plan.name,
-    planId: plan.planId,
-    priceId,
-    isYearly,
-    isCurrentPlan,
-    monthlyPriceId: plan.monthlyPriceId,
-    yearlyPriceId: plan.yearlyPriceId
-  });
 
   // Parse dos benefícios dos metadados baseado no tipo de preço
   const currentMetadata = isYearly ? plan.yearlyMetadata : plan.monthlyMetadata;
@@ -176,7 +167,7 @@ export function PricingCard({
             "bg-gradient-to-r from-blue-500 to-blue-600":
               plan.name?.toLowerCase().includes("enterprise"),
           })}
-          onClick={() => handleCheckout(priceId, isYearly)}
+          onClick={() => handleCheckout(priceId || "", isYearly || false)}
           disabled={isCurrentPlan}
         >
           {getButtonText()}

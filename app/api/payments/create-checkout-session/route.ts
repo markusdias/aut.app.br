@@ -25,6 +25,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 // URL base para redirecionamentos
 const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
+interface StripeError extends Error {
+  type?: string;
+  code?: string;
+  param?: string;
+  raw?: unknown;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { userId, email, priceId, subscription } = await req.json();
@@ -122,7 +129,8 @@ export async function POST(req: NextRequest) {
           });
 
           return NextResponse.json({ sessionId: session.id });
-        } catch (stripeError: any) {
+        } catch (error) {
+          const stripeError = error as StripeError;
           console.error("Stripe Error:", {
             type: stripeError.type,
             message: stripeError.message,
@@ -166,7 +174,8 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json({ sessionId: session.id });
-      } catch (stripeError: any) {
+      } catch (error) {
+        const stripeError = error as StripeError;
         console.error("Stripe Error:", {
           type: stripeError.type,
           message: stripeError.message,

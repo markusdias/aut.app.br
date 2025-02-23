@@ -30,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import axios from "axios";
 import { SubscriptionHistory } from "./SubscriptionHistory";
+import { AxiosError } from "axios";
 
 type SubscriptionCardProps = {
   currentPlan: SubscriptionPlan | null;
@@ -74,10 +75,11 @@ export default function SubscriptionCard({
 
       setIsCancelModalOpen(false);
       window.location.reload(); // Recarrega para atualizar o status
-    } catch (error: any) {
+    } catch (error) {
+      const axiosError = error as AxiosError<{ error: string }>;
       toast({
         title: "Erro ao cancelar",
-        description: error.response?.data?.error || "Ocorreu um erro ao processar sua solicitação",
+        description: axiosError.response?.data?.error || "Ocorreu um erro ao processar sua solicitação",
         variant: "destructive",
       });
     } finally {
@@ -103,10 +105,11 @@ export default function SubscriptionCard({
       });
 
       window.location.reload();
-    } catch (error: any) {
+    } catch (error) {
+      const axiosError = error as AxiosError<{ error: string }>;
       toast({
         title: "Erro ao reverter cancelamento",
-        description: error.response?.data?.error || "Ocorreu um erro ao processar sua solicitação",
+        description: axiosError.response?.data?.error || "Ocorreu um erro ao processar sua solicitação",
         variant: "destructive",
       });
     }

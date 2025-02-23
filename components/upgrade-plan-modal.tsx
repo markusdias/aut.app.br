@@ -1,8 +1,8 @@
 "use client";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { PricingCard } from "./homepage/pricing-card";
-import { PricingSwitch } from "./homepage/pricing";
+import { PricingCard } from "@/components/homepage/pricing-card";
+import { PricingSwitch } from "@/components/homepage/pricing";
 import { usePricing } from "@/utils/hooks/usePricing";
 import { SubscriptionPlan } from "@/utils/data/plans/getSubscriptionPlans";
 

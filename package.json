@@ -2,6 +2,10 @@
   "name": "nextjs-starter",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^20.11.1",
+    "npm": "^10.2.4"
+  },
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build",
@@ -94,6 +98,7 @@
     "next": "latest",
     "next-themes": "^0.3.0",
     "next-view-transitions": "^0.3.4",
+    "nuqs": "^2.4.0",
     "path-to-regexp": "^8.2.0",
     "pg": "^8.13.1",
     "postgres": "^3.4.5",
@@ -128,6 +133,7 @@
     "drizzle-kit": "^0.30.0",
     "eslint": "latest",
     "eslint-config-next": "latest",
+    "eslint-import-resolver-typescript": "^3.8.3",
     "eslint-plugin-import": "^2.31.0",
     "postcss": "latest",
     "tailwindcss": "^3.3.5",

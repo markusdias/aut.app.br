@@ -5,6 +5,10 @@ import { userUpdateProps } from "@/utils/types";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+interface UpdateError extends Error {
+  message: string;
+}
+
 export const userUpdate = async ({
   email,
   first_name,
@@ -22,7 +26,8 @@ export const userUpdate = async ({
     });
 
     return result;
-  } catch (error: any) {
-    throw new Error(error.message);
+  } catch (error) {
+    const err = error as UpdateError;
+    throw new Error(err.message);
   }
 };

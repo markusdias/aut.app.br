@@ -6,6 +6,10 @@ import { users } from "@/db/schema";
 import { clerkClient } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 
+interface AuthError extends Error {
+  message: string;
+}
+
 export const isAuthorized = async (
   userId: string
 ): Promise<{ authorized: boolean; message: string }> => {
@@ -41,10 +45,11 @@ export const isAuthorized = async (
       authorized: false,
       message: "User is not subscribed",
     };
-  } catch (error: any) {
+  } catch (error) {
+    const err = error as AuthError;
     return {
       authorized: false,
-      message: error.message,
+      message: err.message,
     };
   }
 };

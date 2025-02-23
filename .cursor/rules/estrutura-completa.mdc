@@ -236,6 +236,7 @@ root/
 - `docs/{api,architecture,guides,decisions}/**/*`
 
 # Rule
+REGRA DE OURO: Em caso de ausencia de estrutura no projeto, use a estrutura declarada neste documento. Caso haja uma estrutura existente no projeto, utilize a estrutura do projeto de forma lógica.
 1. **Validação de Localização:**  
    - Ao gerar ou modificar qualquer arquivo, o Cursor AI deve confirmar se o arquivo se encontra em um dos diretórios listados nos globs acima.
    - ANTES de criar qualquer arquivo, deve-se fazer uma leitura em todas as pastas em busca do arquivo desejado. Ele pode estar em estrutura diferente da remendada. Se encontrado deve ser movido para a estrutura correta para somente então ser editado, se necessário.

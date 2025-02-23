@@ -4,6 +4,7 @@ import CustomLink from '@/components/custom-link'
 import clsx from 'clsx'
 import {
   Banknote,
+  Bot,
   Folder,
   HomeIcon,
   Settings
@@ -35,6 +36,19 @@ export default function DashboardSideBar() {
           >
             <HomeIcon className="h-4 w-4" />
             Overview
+          </Link>
+
+          <Link prefetch={true}
+            href="/dashboard/agents"
+            className={clsx(
+              "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+              pathname.startsWith("/dashboard/agents")
+                ? "bg-primary/10 text-primary hover:bg-primary/20"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Bot className="h-4 w-4" />
+            Agentes
           </Link>
 
           <Link prefetch={true}

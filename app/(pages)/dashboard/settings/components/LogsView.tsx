@@ -48,8 +48,8 @@ interface PaginationInfo {
 }
 
 interface WebhookEventDetails extends WebhookEvent {
-  payload?: any;
-  metadata?: Record<string, any>;
+  payload?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   retry_count: number;
   processing?: {
     attempts: number;
@@ -216,9 +216,12 @@ export default function LogsView() {
     }
   };
 
-  const handleCopyJson = async (json: any, type: 'payload' | 'metadata') => {
+  const handleCopyJson = async (json: Record<string, unknown> | undefined, type: 'payload' | 'metadata') => {
     const setCopying = type === 'payload' ? setCopyingPayload : setCopyingMetadata;
     try {
+      if (!json) {
+        throw new Error(`${type} não disponível`);
+      }
       await navigator.clipboard.writeText(JSON.stringify(json, null, 2));
       setCopying(true);
       toast({
@@ -513,7 +516,7 @@ export default function LogsView() {
                             size="sm"
                             onClick={() => handleCopyJson(selectedEvent.payload, 'payload')}
                             className="h-7 px-3 text-xs gap-2"
-                            disabled={copyingPayload}
+                            disabled={copyingPayload || !selectedEvent.payload}
                           >
                             {copyingPayload ? (
                               <Check className="h-3 w-3 text-green-500" />
@@ -546,7 +549,7 @@ export default function LogsView() {
                             size="sm"
                             onClick={() => handleCopyJson(selectedEvent.metadata, 'metadata')}
                             className="h-7 px-3 text-xs gap-2"
-                            disabled={copyingMetadata}
+                            disabled={copyingMetadata || !selectedEvent.metadata}
                           >
                             {copyingMetadata ? (
                               <Check className="h-3 w-3 text-green-500" />

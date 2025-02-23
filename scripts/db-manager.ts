@@ -12,6 +12,66 @@ import * as schema from '../db/schema';
 // Carrega variáveis de ambiente
 config({ path: '.env' });
 
+interface Migration {
+  id: number;
+  hash: string;
+  created_at: Date;
+}
+
+interface TableColumn {
+  column_name: string;
+  data_type: string;
+  is_nullable: string;
+}
+
+interface MigrationResult {
+  id: number;
+  hash: string;
+  created_at: Date;
+}
+
+interface MigrationError extends Error {
+  message: string;
+  code?: string;
+  detail?: string;
+}
+
+interface MigrationStatus {
+  missingLocal: string[];
+  notExecuted: string[];
+}
+
+interface MigrationOptions {
+  migrationsFolder: string;
+  migrationsTable: string;
+}
+
+interface DatabaseError extends Error {
+  message: string;
+  code?: string;
+  detail?: string;
+}
+
+interface MigrationExecutionResult {
+  success: boolean;
+  message: string;
+  error?: DatabaseError;
+}
+
+interface MigrationFile {
+  name: string;
+  path: string;
+  content: string;
+  hash: string;
+}
+
+interface StripePlan {
+  id: string;
+  name: string;
+  active: boolean;
+  metadata?: Record<string, unknown>;
+}
+
 export class DatabaseManager {
   private sql: postgres.Sql;
   private db: ReturnType<typeof drizzle>;
@@ -64,12 +124,12 @@ export class DatabaseManager {
     }
   }
 
-  async checkMigrations() {
+  async checkMigrations(): Promise<MigrationStatus> {
     try {
       console.log("🔍 Verificando estado das migrações...\n");
 
       // Busca migrações executadas no banco
-      const result = await this.sql`
+      const result = await this.sql<MigrationResult[]>`
         SELECT * FROM drizzle_migrations 
         ORDER BY id ASC
       `;
@@ -81,7 +141,7 @@ export class DatabaseManager {
         .sort();
 
       console.log("📊 Migrações no Banco de Dados:");
-      result.forEach((migration: any) => {
+      result.forEach((migration: MigrationResult) => {
         console.log(`  ✓ ${migration.hash} (${new Date(migration.created_at).toLocaleString()})`);
       });
 
@@ -91,7 +151,7 @@ export class DatabaseManager {
       });
 
       // Verifica discrepâncias
-      const dbMigrations = result.map((m: any) => m.hash);
+      const dbMigrations = result.map((m: MigrationResult) => m.hash);
       const localNames = localMigrations.map(file => file.replace(".sql", ""));
 
       console.log("\n🔄 Análise de Discrepâncias:");
@@ -116,8 +176,9 @@ export class DatabaseManager {
 
       return { missingLocal, notExecuted };
     } catch (error) {
-      console.error("❌ Erro ao verificar migrações:", error);
-      throw error;
+      const err = error as DatabaseError;
+      console.error("❌ Erro ao verificar migrações:", err);
+      throw err;
     }
   }
 
@@ -175,7 +236,7 @@ export class DatabaseManager {
       console.log("🔧 Iniciando correção das migrações...\n");
 
       // Busca migrações no banco
-      const result = await this.sql`
+      const result = await this.sql<Migration[]>`
         SELECT * FROM drizzle_migrations 
         ORDER BY id ASC
       `;
@@ -187,7 +248,7 @@ export class DatabaseManager {
         .sort();
 
       console.log("📊 Estado atual das migrações:");
-      result.forEach((migration: any) => {
+      result.forEach((migration: Migration) => {
         console.log(`  - ID ${migration.id}: ${migration.hash || 'undefined'}`);
       });
 
@@ -208,13 +269,13 @@ export class DatabaseManager {
       }
 
       // Verifica resultado
-      const updatedResult = await this.sql`
+      const updatedResult = await this.sql<Migration[]>`
         SELECT * FROM drizzle_migrations 
         ORDER BY id ASC
       `;
 
       console.log("\n📊 Estado final das migrações:");
-      updatedResult.forEach((migration: any) => {
+      updatedResult.forEach((migration: Migration) => {
         console.log(`  - ID ${migration.id}: ${migration.hash}`);
       });
 
@@ -230,7 +291,7 @@ export class DatabaseManager {
       console.log(`🔍 Verificando estrutura da tabela ${tableName}...\n`);
 
       // Busca estrutura da tabela
-      const result = await this.sql`
+      const result = await this.sql<TableColumn[]>`
         SELECT column_name, data_type, is_nullable
         FROM information_schema.columns
         WHERE table_name = ${tableName}
@@ -238,7 +299,7 @@ export class DatabaseManager {
       `;
 
       console.log(`📊 Estrutura da tabela ${tableName}:`);
-      result.forEach((column: any) => {
+      result.forEach((column: TableColumn) => {
         console.log(`  - ${column.column_name}: ${column.data_type} (${column.is_nullable === 'YES' ? 'nullable' : 'not null'})`);
       });
 
@@ -249,60 +310,79 @@ export class DatabaseManager {
     }
   }
 
-  private async executeMigration(sql: string, hash: string): Promise<void> {
-    console.log(`\n📦 Aplicando migração ${hash}...`);
-    
-    // Primeiro separa o SQL do rollback
-    const [migrationSql] = sql.split('---- ROLLBACK ----');
-    
-    // Remove comentários
-    const cleanSql = migrationSql
-      .split('\n')
-      .filter(line => !line.trim().startsWith('--')) // Remove comentários
-      .join('\n')
-      .trim();
-    
-    // Split SQL into statements using statement-breakpoint
-    const statements = cleanSql
-      .split('--> statement-breakpoint')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0)
-      .flatMap(stmt => stmt.split(';').map(s => s.trim()).filter(s => s.length > 0))
-      .map(stmt => stmt + ';');
-    
-    console.log(`\n📝 Encontrados ${statements.length} statements para executar:\n`);
-    
-    // Log each statement
-    statements.forEach((stmt, index) => {
-      console.log(`🔹 Statement ${index + 1}:\n${stmt}\n`);
-    });
+  private async executeMigration(sql: string, hash: string): Promise<MigrationExecutionResult> {
+    try {
+      console.log(`\n📦 Aplicando migração ${hash}...`);
+      
+      // Primeiro separa o SQL do rollback
+      const [migrationSql] = sql.split('---- ROLLBACK ----');
+      
+      // Remove comentários
+      const cleanSql = migrationSql
+        .split('\n')
+        .filter(line => !line.trim().startsWith('--')) // Remove comentários
+        .join('\n')
+        .trim();
+      
+      // Split SQL into statements using statement-breakpoint
+      const statements = cleanSql
+        .split('--> statement-breakpoint')
+        .map(stmt => stmt.trim())
+        .filter(stmt => stmt.length > 0)
+        .flatMap(stmt => stmt.split(';').map(s => s.trim()).filter(s => s.length > 0))
+        .map(stmt => stmt + ';');
+      
+      console.log(`\n📝 Encontrados ${statements.length} statements para executar:\n`);
+      
+      // Log each statement
+      statements.forEach((stmt, index) => {
+        console.log(`🔹 Statement ${index + 1}:\n${stmt}\n`);
+      });
 
-    // Execute each statement separately
-    for (const statement of statements) {
-      try {
-        console.log(`🔄 Executando statement:\n${statement}`);
-        await this.sql.unsafe(statement);
-        console.log('✅ Statement executado com sucesso\n');
-      } catch (error) {
-        console.error(`❌ Erro ao executar statement:\n${error}`);
-        throw error;
+      // Execute each statement separately
+      for (const statement of statements) {
+        try {
+          console.log(`🔄 Executando statement:\n${statement}`);
+          await this.sql.unsafe(statement);
+          console.log('✅ Statement executado com sucesso\n');
+        } catch (error) {
+          console.error(`❌ Erro ao executar statement:\n${error}`);
+          throw error;
+        }
       }
+
+      // Registra a migração
+      await this.sql`
+        INSERT INTO drizzle_migrations (hash)
+        VALUES (${hash})
+      `;
+
+      console.log(`✅ Migração ${hash} aplicada com sucesso!`);
+      return {
+        success: true,
+        message: `Migration ${hash} executed successfully`
+      };
+    } catch (error) {
+      const err = error as DatabaseError;
+      return {
+        success: false,
+        message: `Failed to execute migration ${hash}`,
+        error: err
+      };
     }
-
-    // Registra a migração
-    await this.sql`
-      INSERT INTO drizzle_migrations (hash)
-      VALUES (${hash})
-    `;
-
-    console.log(`✅ Migração ${hash} aplicada com sucesso!`);
   }
 
-  private getLocalMigrations(): string[] {
+  private getLocalMigrations(): MigrationFile[] {
     const migrationsDir = path.join(process.cwd(), "db", "migrations");
     return fs.readdirSync(migrationsDir)
       .filter(file => file.endsWith(".sql"))
-      .sort();
+      .sort()
+      .map(file => ({
+        name: file,
+        path: path.join(migrationsDir, file),
+        content: fs.readFileSync(path.join(migrationsDir, file), 'utf8'),
+        hash: file.replace(".sql", "")
+      }));
   }
 
   private getHashFromFilename(filename: string): string {
@@ -331,25 +411,25 @@ export class DatabaseManager {
 
       // Identifica migrações pendentes
       const pendingMigrations = this.getLocalMigrations()
-        .filter(file => !initialState.some(row => row.hash === this.getHashFromFilename(file)));
+        .filter(file => !initialState.some(row => row.hash === this.getHashFromFilename(file.name)));
 
       if (pendingMigrations.length > 0) {
-        console.log('📦 Migrações pendentes detectadas:', pendingMigrations);
+        console.log('📦 Migrações pendentes detectadas:', pendingMigrations.map(m => m.name));
         console.log('🔄 Executando migrações manualmente...');
 
         // Lista todas as migrações locais
         const allMigrations = this.getLocalMigrations();
         for (const migrationFile of allMigrations) {
-          const hash = this.getHashFromFilename(migrationFile);
+          const hash = this.getHashFromFilename(migrationFile.name);
           
-          if (pendingMigrations.includes(migrationFile)) {
-            const migrationsDir = path.join(process.cwd(), "db", "migrations");
-            const sqlContent = fs.readFileSync(path.join(migrationsDir, migrationFile), 'utf8');
-            
+          if (pendingMigrations.some(m => m.name === migrationFile.name)) {
             // Aplica a migração
-            await this.executeMigration(sqlContent, hash);
+            const result = await this.executeMigration(migrationFile.content, hash);
+            if (!result.success) {
+              throw result.error!;
+            }
           } else {
-            console.log(`ℹ️  Migração ${migrationFile} já aplicada.`);
+            console.log(`ℹ️  Migração ${migrationFile.name} já aplicada.`);
           }
         }
 
@@ -360,7 +440,7 @@ export class DatabaseManager {
 
         console.log('\n✅ Novas migrações aplicadas:');
         pendingMigrations.forEach(file => {
-          console.log(`  - ${this.getHashFromFilename(file)}`);
+          console.log(`  - ${this.getHashFromFilename(file.name)}`);
         });
 
         console.log('\n✅ Todas as migrações foram aplicadas com sucesso!');
@@ -543,8 +623,9 @@ export class DatabaseManager {
 
       console.log("\n✅ Planos sincronizados com sucesso!");
     } catch (error) {
-      console.error("\n❌ Erro ao sincronizar planos:", error);
-      throw error;
+      const err = error as DatabaseError;
+      console.error("❌ Erro ao sincronizar planos:", err);
+      throw err;
     }
   }
 

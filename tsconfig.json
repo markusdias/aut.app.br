@@ -9,6 +9,7 @@
       "@/styles/*": ["styles/*"],
       "@/db/*": ["db/*"],
       "@/scripts/*": ["scripts/*"],
+      "@/hooks/*": ["hooks/*"],
       "@/config": ["config.ts"],
       "@/app/*": ["app/*"]
     },

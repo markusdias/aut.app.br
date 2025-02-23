@@ -2,14 +2,57 @@ import { db } from "@/db/drizzle";
 import { users, subscriptions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
+// Interfaces para os payloads
+interface ClerkWebhookPayload {
+  type: string;
+  data?: {
+    id?: string;
+    user_id?: string;
+  };
+}
+
+interface StripeWebhookPayload {
+  type: string;
+  data?: {
+    object?: {
+      metadata?: {
+        userId?: string;
+      };
+      customer_details?: {
+        email?: string;
+      };
+      customer_email?: string;
+      email?: string;
+      subscription?: string;
+      object?: string;
+    };
+  };
+}
+
+type WebhookPayload = ClerkWebhookPayload | StripeWebhookPayload;
+
+interface ResolutionMetadata {
+  resolution_start: string;
+  resolution_end?: string;
+  resolution_time_ms?: number;
+  provider: string;
+  success?: boolean;
+  error?: string;
+  attempts: Array<{
+    type: 'clerk_direct' | 'stripe_session_metadata' | 'stripe_customer_email' | 'stripe_subscription';
+    identifier: string;
+    timestamp: string;
+  }>;
+}
+
 export class WebhookUserResolutionService {
-  async resolveUserId(provider: string, payload: any): Promise<{
+  async resolveUserId(provider: string, payload: WebhookPayload): Promise<{
     userId: number | null;
-    metadata: Record<string, any>;
+    metadata: ResolutionMetadata;
   }> {
     const startTime = Date.now();
     let userId: number | null = null;
-    const metadata: Record<string, any> = {
+    const metadata: ResolutionMetadata = {
       resolution_start: new Date(startTime).toISOString(),
       provider,
       attempts: []
@@ -19,16 +62,16 @@ export class WebhookUserResolutionService {
       provider,
       payloadType: payload?.type,
       hasData: !!payload?.data,
-      hasObject: !!payload?.data?.object
+      hasObject: payload?.data && 'object' in payload.data && !!payload.data.object
     });
 
     try {
       switch (provider) {
         case 'clerk':
-          userId = await this.resolveClerkUserId(payload, metadata);
+          userId = await this.resolveClerkUserId(payload as ClerkWebhookPayload, metadata);
           break;
         case 'stripe':
-          userId = await this.resolveStripeUserId(payload, metadata);
+          userId = await this.resolveStripeUserId(payload as StripeWebhookPayload, metadata);
           break;
       }
 
@@ -59,13 +102,13 @@ export class WebhookUserResolutionService {
     }
   }
 
-  private async resolveClerkUserId(payload: any, metadata: Record<string, any>): Promise<number | null> {
+  private async resolveClerkUserId(payload: ClerkWebhookPayload, metadata: ResolutionMetadata): Promise<number | null> {
     const clerkId = payload.data?.id || payload.data?.user_id;
     console.log('👤 Tentando resolver Clerk ID:', { clerkId });
 
     metadata.attempts.push({
       type: 'clerk_direct',
-      identifier: clerkId,
+      identifier: clerkId || '',
       timestamp: new Date().toISOString()
     });
 
@@ -89,7 +132,7 @@ export class WebhookUserResolutionService {
     return user[0]?.id || null;
   }
 
-  private async resolveStripeUserId(payload: any, metadata: Record<string, any>): Promise<number | null> {
+  private async resolveStripeUserId(payload: StripeWebhookPayload, metadata: ResolutionMetadata): Promise<number | null> {
     console.log('💳 Iniciando resolução Stripe:', {
       payloadType: payload?.type,
       hasMetadata: !!payload?.data?.object?.metadata,

@@ -52,6 +52,16 @@ type InvoiceData = {
   paymentIntent: string | undefined;
 };
 
+interface WebhookError extends Error {
+  message: string;
+  stack?: string;
+  response?: {
+    data?: {
+      error?: string;
+    };
+  };
+}
+
 export async function POST(req: Request) {
   let webhookEventId: string | undefined;
 
@@ -176,18 +186,19 @@ export async function POST(req: Request) {
           status: result.status || 200
         });
       } catch (error: any) {
+        const err = error as WebhookError;
         console.error('❌ Erro no processamento do evento:', {
           type: event.type,
           id: event.id,
-          error: error.message,
-          stack: error.stack,
+          error: err.message,
+          stack: err.stack,
           timestamp: new Date().toISOString()
         });
 
         // Update status to failed
-        await updateWebhookStatus(event.id, 'failed', error.message);
-              throw error;
-            }
+        await updateWebhookStatus(event.id, 'failed', err.message);
+        throw err;
+      }
     } else {
       console.log('ℹ️ Evento não relevante ignorado:', {
         type: event.type,
@@ -199,18 +210,19 @@ export async function POST(req: Request) {
     // Atualiza o status para completed ANTES de retornar a resposta
     await updateWebhookStatus(event.id, 'completed');
     return new NextResponse("Webhook processed", { status: 200 });
-  } catch (error: any) {
+  } catch (error) {
+    const err = error as WebhookError;
     console.error("❌ Falha geral no webhook:", {
       eventId: webhookEventId,
-      error: error.message,
-      stack: error.stack,
+      error: err.message,
+      stack: err.stack,
       timestamp: new Date().toISOString()
     });
 
     // Se temos o ID do evento e ainda não atualizamos o status para failed
     if (webhookEventId) {
       await updateWebhookStatus(webhookEventId, 'failed', 
-        `Erro geral: ${error.message}`
+        `Erro geral: ${err.message}`
       );
     }
 
@@ -249,7 +261,7 @@ function getPriceIdFromSubscription(subscription: Stripe.Subscription): string |
 async function handleSubscriptionEvent(
   event: Stripe.Event,
   type: "created" | "updated" | "deleted"
-) {
+): Promise<NextResponse> {
   const subscription = (event.data as any).object as Stripe.Subscription;
   const customerEmail = await getCustomerEmail(subscription.customer as string);
 
@@ -275,8 +287,8 @@ async function handleSubscriptionEvent(
     console.error('❌ Customer email not found:', subscription.customer);
     return NextResponse.json({
       status: 500,
-      error: "Customer email could not be fetched",
-    });
+      message: "Customer email could not be fetched",
+    }, { status: 500 });
   }
 
   // Se não tiver userId nos metadados da assinatura, busca na tabela users pelo email
@@ -436,18 +448,23 @@ async function handleSubscriptionEvent(
       });
     }
   } catch (error) {
-    console.error(`Error during subscription ${type}:`, error);
+    const err = error as WebhookError;
+    console.error('❌ Erro no processamento do evento:', {
+      type: event.type,
+      error: err.message,
+      stack: err.stack
+    });
     return NextResponse.json({
       status: 500,
-      error: `Error during subscription ${type}`,
-    });
+      error: err.message
+    }, { status: 500 });
   }
 }
 
 async function handleInvoiceEvent(
   event: Stripe.Event,
   status: "succeeded" | "failed"
-) {
+): Promise<NextResponse> {
   const invoice = event.data.object as Stripe.Invoice;
   const customerEmail = await getCustomerEmail(invoice.customer as string);
 
@@ -467,7 +484,7 @@ async function handleInvoiceEvent(
     return NextResponse.json({
       status: 500,
       error: "Customer email could not be fetched",
-    });
+    }, { status: 500 });
   }
 
   // Busca o userId pelo email se não estiver nos metadados
@@ -607,11 +624,16 @@ async function handleInvoiceEvent(
       data: insertedInvoice,
     });
   } catch (error) {
-    console.error(`Error handling invoice (payment ${status}):`, error);
+    const err = error as WebhookError;
+    console.error('❌ Erro no processamento do evento:', {
+      type: event.type,
+      error: err.message,
+      stack: err.stack
+    });
     return NextResponse.json({
       status: 500,
-      error: `Error handling invoice (payment ${status})`,
-    });
+      error: err.message
+    }, { status: 500 });
   }
 }
 
@@ -894,8 +916,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
       message: "Assinatura processada com sucesso",
     });
   } catch (error) {
-    console.error('❌ Erro ao processar assinatura:', error);
-    throw error;
+    const err = error as WebhookError;
+    console.error('❌ Erro ao processar assinatura:', err);
+    throw err;
   }
 }
 
@@ -930,7 +953,8 @@ async function handlePlanEvent(event: Stripe.Event) {
       message: "Plan updated successfully",
     });
   } catch (error) {
-    console.error("Error updating plan:", error);
+    const err = error as WebhookError;
+    console.error("Error updating plan:", err);
     return NextResponse.json({
       status: 500,
       error: "Error updating plan",
@@ -1010,8 +1034,9 @@ async function handleProductUpdated(event: Stripe.Event) {
       message: "Product updated successfully"
     };
   } catch (error) {
-    console.error("❌ Erro ao processar product.updated:", error);
-    throw error;
+    const err = error as WebhookError;
+    console.error("❌ Erro ao processar product.updated:", err);
+    throw err;
   }
 }
 
@@ -1041,8 +1066,9 @@ async function handleProductDeleted(event: Stripe.Event) {
       message: "Product deleted successfully"
     };
   } catch (error) {
-    console.error("❌ Erro ao processar product.deleted:", error);
-    throw error;
+    const err = error as WebhookError;
+    console.error("❌ Erro ao processar product.deleted:", err);
+    throw err;
   }
 }
 
@@ -1098,8 +1124,9 @@ async function handlePriceUpdated(event: Stripe.Event) {
       data: updateResult[0]
     };
   } catch (error) {
-    console.error("❌ Erro ao processar price.updated:", error);
-    throw error;
+    const err = error as WebhookError;
+    console.error("❌ Erro ao processar price.updated:", err);
+    throw err;
   }
 }
 
@@ -1122,7 +1149,8 @@ async function handlePriceDeleted(event: Stripe.Event) {
       data: updateResult[0]
     };
   } catch (error) {
-    console.error("❌ Erro ao processar price.deleted:", error);
-    throw error;
+    const err = error as WebhookError;
+    console.error("❌ Erro ao processar price.deleted:", err);
+    throw err;
   }
 }

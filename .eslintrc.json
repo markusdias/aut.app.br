@@ -7,6 +7,14 @@
     "@typescript-eslint",
     "import"
   ],
+  "settings": {
+    "import/resolver": {
+      "typescript": {
+        "alwaysTryTypes": true,
+        "project": "./tsconfig.json"
+      }
+    }
+  },
   "rules": {
     "import/no-restricted-paths": [
       "error",

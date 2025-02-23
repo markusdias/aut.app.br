@@ -1,4 +1,6 @@
 "use client"
+
+// UI Components
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,18 +10,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Bell, Globe, Lock, Mail, Moon, Palette, Shield, User } from "lucide-react";
-import config from '@/config';
-import { useUser } from '@clerk/nextjs';
 import { Textarea } from "@/components/ui/textarea";
-import { useEffect, useState } from "react";
-import { usePricing } from "@/utils/hooks/usePricing";
+
+// Icons
+import { Bell, Globe, Lock, Mail, Moon, Palette, Shield, User } from "lucide-react";
+
+// Page Components
 import SubscriptionCard from "./components/SubscriptionCard";
-import axios from "axios";
 import PaymentHistory from './components/PaymentHistory';
-import { Suspense } from "react";
 import LogsView from './components/LogsView';
 
+// Hooks and Utils
+import { useUser } from '@clerk/nextjs';
+import { usePricing } from "@/utils/hooks/usePricing";
+import { useEffect, useState } from "react";
+import config from '@/config';
+import axios from "axios";
+
+// Types
 type SubscriptionHistory = {
   oldPlanName: string;
   newPlanName: string;
@@ -28,11 +36,9 @@ type SubscriptionHistory = {
 };
 
 export default function SettingsPage() {
-  let user = null;
-  /* eslint-disable react-hooks/rules-of-hooks */
-  if (config?.auth?.enabled) {
-    user = useUser();
-  }
+  // Usando um hook condicional de forma segura
+  const userAuth = config?.auth?.enabled ? useUser() : { user: null };
+  const user = userAuth.user;
 
   const { userInfo: subscriptionInfo, isLoading: subscriptionLoading } = usePricing();
   const [subscriptionHistory, setSubscriptionHistory] = useState<SubscriptionHistory[]>([]);
@@ -40,15 +46,15 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | undefined>();
 
   useEffect(() => {
-    if (user?.user?.id) {
+    if (user?.id) {
       setHistoryLoading(true);
       setError(undefined);
-      console.log('🔄 Iniciando busca de histórico para usuário:', user.user.id);
+      console.log('🔄 Iniciando busca de histórico para usuário:', user.id);
       
       // Busca o histórico de assinaturas
       axios.get('/api/user/subscription/history', {
         headers: {
-          'x-user-id': user.user.id
+          'x-user-id': user.id
         }
       })
       .then(response => {
@@ -67,7 +73,7 @@ export default function SettingsPage() {
         setHistoryLoading(false);
       });
     }
-  }, [user?.user?.id]);
+  }, [user?.id]);
 
   return (
     <div className="container mx-auto py-10">
@@ -107,15 +113,15 @@ export default function SettingsPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="name">Name</Label>
-                      <Input id="name" placeholder="Your name" defaultValue={user?.user?.firstName ? user?.user?.firstName : ""} />
+                      <Input id="name" placeholder="Your name" defaultValue={user?.firstName ? user?.firstName : ""} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email">Email</Label>
-                      <Input id="email" type="email" placeholder="Your email" defaultValue={user?.user?.emailAddresses?.[0]?.emailAddress!} />
+                      <Input id="email" type="email" placeholder="Your email" defaultValue={user?.emailAddresses?.[0]?.emailAddress!} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="username">Username</Label>
-                      <Input id="username" placeholder="Username" defaultValue={user?.user?.username!} />
+                      <Input id="username" placeholder="Username" defaultValue={user?.username!} />
                     </div>
                   </div>
                   <div className="space-y-2">

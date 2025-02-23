@@ -1,11 +1,20 @@
 "use client";
 
+// UI Components
 import { Button } from "@/components/ui/button";
 import PageWrapper from "@/components/wrapper/page-wrapper";
-import { ArrowRight, Sparkles } from "lucide-react";
-import Link from "next/link";
-import { motion } from "framer-motion";
 import Pricing from "@/components/homepage/pricing";
+
+// Icons
+import { ArrowRight, Sparkles } from "lucide-react";
+
+// Next.js
+import Link from "next/link";
+
+// Animation
+import { motion } from "framer-motion";
+
+// Config
 import config from "@/config";
 
 export default function NotSubscriber() {

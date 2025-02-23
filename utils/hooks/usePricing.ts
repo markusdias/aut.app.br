@@ -3,7 +3,7 @@ import { useUser } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
 import { SubscriptionPlan } from "@/utils/data/plans/getSubscriptionPlans";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { useRouter } from "next/navigation";
 
 export type Subscription = {
@@ -200,28 +200,39 @@ export function usePricing() {
       await stripe.redirectToCheckout({
         sessionId: response.data.sessionId
       });
-    } catch (error: any) {
-      console.error("DEBUG - handleCheckout - Erro detalhado:", {
-        message: error.message,
-        response: {
-          data: error.response?.data,
-          status: error.response?.status,
-          headers: error.response?.headers
-        },
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        const isAxiosError = axios.isAxiosError(error);
+        const axiosError = error as AxiosError;
 
-      // Tratamento específico de erros
-      if (error.response?.status === 400) {
-        toast.error("Dados inválidos. Por favor, tente novamente.");
-      } else if (error.response?.status === 401) {
-        toast.error("Sessão expirada. Por favor, faça login novamente.");
-        router.push("/sign-in");
-      } else if (error.response?.status === 500) {
-        toast.error("Erro no servidor. Por favor, tente novamente mais tarde.");
+        console.error("DEBUG - handleCheckout - Erro detalhado:", {
+          message: error.message,
+          response: isAxiosError && axiosError.response ? {
+            data: axiosError.response.data,
+            status: axiosError.response.status,
+            headers: axiosError.response.headers
+          } : undefined,
+          stack: error.stack,
+          timestamp: new Date().toISOString()
+        });
+
+        // Tratamento específico de erros
+        if (isAxiosError && axiosError.response) {
+          if (axiosError.response.status === 400) {
+            toast.error("Dados inválidos. Por favor, tente novamente.");
+          } else if (axiosError.response.status === 401) {
+            toast.error("Sessão expirada. Por favor, faça login novamente.");
+            router.push("/sign-in");
+          } else if (axiosError.response.status === 500) {
+            toast.error("Erro no servidor. Por favor, tente novamente mais tarde.");
+          } else {
+            toast.error(`Erro ao processar checkout: ${error.message}`);
+          }
+        } else {
+          toast.error(`Erro ao processar checkout: ${error.message}`);
+        }
       } else {
-        toast.error(`Erro ao processar checkout: ${error.message}`);
+        toast.error("Erro desconhecido ao processar checkout");
       }
     }
   };

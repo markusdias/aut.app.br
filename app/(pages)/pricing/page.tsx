@@ -1,10 +1,15 @@
 "use client";
 
+// UI Components
 import { AccordionComponent } from "@/components/homepage/accordion-component";
 import Pricing from "@/components/homepage/pricing";
 import PageWrapper from "@/components/wrapper/page-wrapper";
-import { motion } from "framer-motion";
+
+// Icons
 import { Check, DollarSign } from "lucide-react";
+
+// Animation
+import { motion } from "framer-motion";
 
 export default function PricingPage() {
   const features = [

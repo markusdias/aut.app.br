@@ -6,19 +6,10 @@ interface CustomVideoPlayerProps {
   videoSrc: string;
 }
 
-export const VideoPlayer: React.FC<CustomVideoPlayerProps> = ({ videoSrc }) => {
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+// Hook para controle de progresso do vídeo
+function useVideoProgress(videoRef: React.RefObject<HTMLVideoElement | null>, autoplay: boolean) {
   const [progress, setProgress] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(1);
-  const [currentVolume, setCurrentVolume] = useState<number>(1);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [showControls, setShowControls] = useState<boolean>(true);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const playerRef = useRef<HTMLDivElement>(null);
-  const [lastMouseMoveTime, setLastMouseMoveTime] = useState(Date.now());
-
-  const autoplay = useMemo(() => false, []);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -43,7 +34,63 @@ export const VideoPlayer: React.FC<CustomVideoPlayerProps> = ({ videoSrc }) => {
       video.removeEventListener("timeupdate", updateProgress);
       video.removeEventListener("ended", handleVideoEnd);
     };
-  }, [autoplay]);
+  }, [autoplay, videoRef]);
+
+  const handleProgressChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!videoRef.current) return;
+    const newTime = (Number(e.target.value) / 100) * videoRef.current.duration;
+    videoRef.current.currentTime = newTime;
+    setProgress(Number(e.target.value));
+  }, [videoRef]);
+
+  const togglePlay = useCallback(() => {
+    if (!videoRef.current) return;
+    videoRef.current[isPlaying ? 'pause' : 'play']();
+    setIsPlaying(!isPlaying);
+  }, [isPlaying, videoRef]);
+
+  return { progress, isPlaying, handleProgressChange, togglePlay };
+}
+
+// Hook para controle de volume
+function useVideoVolume(videoRef: React.RefObject<HTMLVideoElement | null>) {
+  const [volume, setVolume] = useState<number>(1);
+  const [currentVolume, setCurrentVolume] = useState<number>(1);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+
+  const toggleMute = useCallback(() => {
+    if (!videoRef.current) return;
+    videoRef.current.muted = !isMuted;
+    setIsMuted(!isMuted);
+    setVolume(isMuted ? currentVolume : 0);
+  }, [isMuted, currentVolume, videoRef]);
+
+  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!videoRef.current) return;
+    const newVolume = Number(e.target.value);
+    videoRef.current.volume = newVolume;
+    setVolume(newVolume);
+    setCurrentVolume(newVolume);
+    setIsMuted(newVolume === 0);
+  }, [videoRef]);
+
+  return { volume, isMuted, toggleMute, handleVolumeChange };
+}
+
+// Hook para controle de tela cheia e controles
+function useVideoControls(playerRef: React.RefObject<HTMLDivElement | null>, isPlaying: boolean) {
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [showControls, setShowControls] = useState<boolean>(true);
+  const [lastMouseMoveTime, setLastMouseMoveTime] = useState(Date.now());
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = () => {
@@ -78,54 +125,13 @@ export const VideoPlayer: React.FC<CustomVideoPlayerProps> = ({ videoSrc }) => {
       }
       clearInterval(inactivityInterval);
     };
-  }, [isFullscreen, lastMouseMoveTime]);
+  }, [isFullscreen, lastMouseMoveTime, isPlaying, playerRef]);
 
   useEffect(() => {
     if (!isFullscreen) {
       setShowControls(true);
     }
   }, [isFullscreen]);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
-  }, []);
-
-  const togglePlay = useCallback(() => {
-    if (!videoRef.current) return;
-    videoRef.current[isPlaying ? 'pause' : 'play']();
-    setIsPlaying(!isPlaying);
-  }, [isPlaying]);
-
-  const handleProgressChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current) return;
-    const newTime = (Number(e.target.value) / 100) * videoRef.current.duration;
-    videoRef.current.currentTime = newTime;
-    setProgress(Number(e.target.value));
-  }, []);
-
-  const toggleMute = useCallback(() => {
-    if (!videoRef.current) return;
-    videoRef.current.muted = !isMuted;
-    setIsMuted(!isMuted);
-    setVolume(isMuted ? currentVolume : 0);
-  }, [isMuted, currentVolume]);
-
-  const handleVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current) return;
-    const newVolume = Number(e.target.value);
-    videoRef.current.volume = newVolume;
-    setVolume(newVolume);
-    setCurrentVolume(newVolume);
-    setIsMuted(newVolume === 0);
-  }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (!playerRef.current) return;
@@ -134,7 +140,19 @@ export const VideoPlayer: React.FC<CustomVideoPlayerProps> = ({ videoSrc }) => {
     } else {
       document.exitFullscreen();
     }
-  }, []);
+  }, [playerRef]);
+
+  return { isFullscreen, showControls, toggleFullscreen };
+}
+
+export const VideoPlayer: React.FC<CustomVideoPlayerProps> = ({ videoSrc }) => {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerRef = useRef<HTMLDivElement | null>(null);
+  const autoplay = useMemo(() => false, []);
+
+  const { progress, isPlaying, handleProgressChange, togglePlay } = useVideoProgress(videoRef, autoplay);
+  const { volume, isMuted, toggleMute, handleVolumeChange } = useVideoVolume(videoRef);
+  const { isFullscreen, showControls, toggleFullscreen } = useVideoControls(playerRef, isPlaying);
 
   return (
     <div ref={playerRef} className="flex flex-col justify-center items-center max-w-full relative mb-16">
@@ -155,7 +173,7 @@ export const VideoPlayer: React.FC<CustomVideoPlayerProps> = ({ videoSrc }) => {
       </div>
       <div className={`
           text-white
-         bg-black bg-opacity-50
+          bg-black bg-opacity-50
           p-2 w-full absolute
           bottom-0
           left-0

@@ -4,6 +4,10 @@ import { db } from "@/db/drizzle";
 import { users } from "@/db/schema";
 import { userCreateProps } from "@/utils/types";
 
+interface CreateError extends Error {
+  message: string;
+}
+
 export const userCreate = async ({
   email,
   first_name,
@@ -29,7 +33,8 @@ export const userCreate = async ({
     }).returning();
 
     return result;
-  } catch (error: any) {
-    throw new Error(error.message);
+  } catch (error) {
+    const err = error as CreateError;
+    throw new Error(err.message);
   }
 };

@@ -22,14 +22,18 @@ import { motion } from "motion/react";
 import { SubscriptionPlan } from "@/utils/data/plans/getSubscriptionPlans";
 import { PricingCard } from "./pricing-card";
 import { usePricing } from "@/utils/hooks/usePricing";
+import { User } from "@clerk/nextjs/server";
 
 type PricingSwitchProps = {
   onSwitch: (value: string) => void;
 };
 
 type UserSubscriptionInfo = {
-  user: any;
-  subscription: any;
+  user: User | null;
+  subscription: {
+    planId: string;
+    status: string;
+  } | null;
   currentPlan: SubscriptionPlan | null;
 };
 
@@ -90,29 +94,6 @@ export default function Pricing() {
     isLoading
   } = usePricing();
 
-  console.log('DEBUG - Pricing Component:', {
-    isLoading,
-    isYearly,
-    userInfo: userInfo ? {
-      currentPlan: userInfo.currentPlan ? {
-        name: userInfo.currentPlan.name,
-        planId: userInfo.currentPlan.planId,
-        monthlyPriceId: userInfo.currentPlan.monthlyPriceId,
-        yearlyPriceId: userInfo.currentPlan.yearlyPriceId
-      } : null,
-      subscription: userInfo.subscription ? {
-        planId: userInfo.subscription.planId,
-        status: userInfo.subscription.status
-      } : null
-    } : null,
-    plans: plans.map(plan => ({
-      name: plan.name,
-      planId: plan.planId,
-      monthlyPriceId: plan.monthlyPriceId,
-      yearlyPriceId: plan.yearlyPriceId
-    }))
-  });
-
   // Se estiver carregando, mostra um indicador de carregamento
   if (isLoading) {
     return (
@@ -159,14 +140,6 @@ export default function Pricing() {
           {plans.map((plan) => {
             const currentPriceId = isYearly ? plan.yearlyPriceId : plan.monthlyPriceId;
             const isCurrentPlan = userInfo?.currentPlan?.planId === plan.planId;
-
-            console.log('DEBUG - Pricing - Comparando planos:', {
-              planName: plan.name,
-              planId: plan.planId,
-              currentPriceId,
-              userCurrentPlanId: userInfo?.currentPlan?.planId,
-              isCurrentPlan
-            });
 
             return (
               <PricingCard

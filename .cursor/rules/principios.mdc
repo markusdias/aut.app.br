@@ -14,7 +14,7 @@ Esta regra define diretrizes de boas práticas e convenções para a escrita de 
 - `tests/**/*.{ts,tsx}`
 
 ## Princípios Fundamentais
-- **Princípio Básico 1. Planejamento:** TODA implementação deve ser orientada por uma TODO*. md. NUNCA implemente se não houveer um TODO*.md como guia. A implementação deve existir para atender algum ponto descrito no TODO.
+- **Princípio Básico 1. Planejamento:** TODA implementação deve ser orientada por uma TODO*.md. NUNCA implemente se não houveer um TODO*.md como guia. A implementação deve existir para atender algum ponto descrito no TODO.
 - **Princípio Básico 2. TODO*.md:** Deverá existir um TODO*.md em docs/ que guiará as implementações. Caso não exista, não implemente. Ajude a criar um TODO para as novas funcionalidades, fazendo perguntas. O TODO final deverá ser consistênte, sem ambiguidades, claro, deverá orientar e ser um mapa do desenvolvimento. Somentte passe adiante para implementação quando não restar dúvidas do que será feito. Tudo deverá ser previsto neste plano TODO.
 - **Código Conciso e Técnico:** Escreva exemplos precisos em TypeScript, sem redundâncias.
 - **Programação Funcional e Declarativa:** Utilize funções puras (usando a palavra-chave `function`) e evite classes.

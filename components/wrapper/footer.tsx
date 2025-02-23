@@ -1,10 +1,13 @@
 "use client"
 import { useForm } from 'react-hook-form';
-import { Input } from '../ui/input';
-import { Button } from '../ui/button';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowRight, Github, Sparkles, Twitter } from 'lucide-react';
-import { motion } from "framer-motion";
+
+interface NewsletterFormData {
+  email: string;
+}
 
 export default function Footer() {
     const {
@@ -12,9 +15,9 @@ export default function Footer() {
         handleSubmit,
         formState: { errors },
         reset,
-    } = useForm();
+    } = useForm<NewsletterFormData>();
 
-    const onSubmit = async (data: any) => {
+    const onSubmit = async (data: NewsletterFormData) => {
         // Handle newsletter submission
         console.log(data);
         reset();

@@ -1,24 +1,41 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import config from "./config";
 
-let clerkMiddleware: (arg0: (auth: any, req: any) => any) => { (arg0: any): any; new(): any; }, createRouteMatcher;
+interface AuthObject {
+  userId: string | null;
+  redirectToSignIn: () => NextResponse;
+}
+
+interface ClerkMiddleware {
+  (handler: (auth: () => Promise<AuthObject>, req: NextRequest) => Promise<NextResponse>): (req: NextRequest) => Promise<NextResponse>;
+}
+
+interface ClerkModules {
+  clerkMiddleware: ClerkMiddleware;
+  createRouteMatcher: (patterns: string[]) => (req: NextRequest) => boolean;
+}
+
+let clerkMiddleware: ClerkMiddleware | undefined;
+let createRouteMatcher: ((patterns: string[]) => (req: NextRequest) => boolean) | undefined;
 
 if (config.auth.enabled) {
   try {
-    ({ clerkMiddleware, createRouteMatcher } = require("@clerk/nextjs/server"));
+    const modules = require("@clerk/nextjs/server") as ClerkModules;
+    ({ clerkMiddleware, createRouteMatcher } = modules);
   } catch (error) {
     console.warn("Clerk modules not available. Auth will be disabled.");
     config.auth.enabled = false;
   }
 }
 
-const isProtectedRoute = config.auth.enabled
+const isProtectedRoute = config.auth.enabled && createRouteMatcher
   ? createRouteMatcher(["/dashboard(.*)"])
   : () => false;
 
-export default function middleware(req: any) {
-  if (config.auth.enabled) {
-    return clerkMiddleware(async (auth, req) => {
+export default function middleware(req: NextRequest) {
+  if (config.auth.enabled && clerkMiddleware) {
+    return clerkMiddleware(async (auth: () => Promise<AuthObject>, req: NextRequest) => {
       const resolvedAuth = await auth();
 
       if (!resolvedAuth.userId && isProtectedRoute(req)) {

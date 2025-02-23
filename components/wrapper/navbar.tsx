@@ -10,20 +10,21 @@ import {
 import config from "@/config";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@clerk/nextjs";
-import { Dialog } from "@radix-ui/react-dialog";
 import { motion } from "framer-motion";
 import { Github, Menu, Sparkles, Twitter, Youtube } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import * as React from "react";
-import ModeToggle from "../mode-toggle";
-import { Button } from "../ui/button";
+import ModeToggle from "@/components/mode-toggle";
+import { Button } from "@/components/ui/button";
 import {
+  Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "../ui/sheet";
-import { UserProfile } from "../user-profile";
+} from "@/components/ui/sheet";
+import { UserProfile } from "@/components/user-profile";
 
 const components: { title: string; href: string; description: string }[] = [
   {
@@ -61,7 +62,7 @@ export default function NavBar() {
       <div className="flex items-center justify-between p-4 max-w-7xl mx-auto">
         {/* Logo - Mobile */}
         <div className="flex lg:hidden items-center gap-2">
-          <Dialog>
+          <Sheet>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="lg:hidden">
                 <Menu className="h-5 w-5" />
@@ -146,7 +147,7 @@ export default function NavBar() {
                 )}
               </div>
             </SheetContent>
-          </Dialog>
+          </Sheet>
           <Link href="/" prefetch={true} className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-blue-600" />
             <span className="font-semibold">Next Starter</span>
@@ -215,7 +216,12 @@ export default function NavBar() {
           )}
           {userId && <UserProfile />}
           <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmichaelshimeles%2Fnextjs-starter-kit&env=NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,CLERK_SECRET_KEY,NEXT_PUBLIC_CLERK_SIGN_IN_URL,NEXT_PUBLIC_CLERK_SIGN_UP_URL,NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL,NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL,DATABASE_URL,NEXT_PUBLIC_BASE_URL,OPENAI_API_KEY&envDescription=You'll%20need%20api%20keys%20from%20Clerk%20Auth%2C%20Neon%20Postgres%2C%20%26%20OpenAI&project-name=next-starter&repository-name=next-starter&redirect-url=https%3A%2F%2Fwww.nextstarter.xyz%2F&demo-title=Next%20Starter&demo-description=The%20Ultimate%20Nextjs%2015%20Starter%20Kit%20for%20quickly%20building%20your%20SaaS%2C%20giving%20you%20time%20to%20focus%20on%20what%20really%20matters&demo-url=https%3A%2F%2Fwww.nextstarter.xyz%2F&demo-image=https%3A%2F%2Fdwdwn8b5ye.ufs.sh%2Ff%2FMD2AM9SEY8GucGJl7b5qyE7FjNDKYduLOG2QHWh3f5RgSi0c">
-            <img src="https://vercel.com/button" alt="Deploy with Vercel" />
+            <Image 
+              src="https://vercel.com/button" 
+              alt="Deploy with Vercel" 
+              width={92} 
+              height={32}
+            />
           </a>
         </div>
       </div>

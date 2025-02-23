@@ -46,6 +46,48 @@
 - Validar cada etapa da refatoração
 - Ter plano de rollback sempre pronto
 
+### 2.4 Hidratação React
+- Identificar componentes que precisam ser client-side
+- Marcar apenas componentes interativos com "use client"
+- Evitar "use client" desnecessário em páginas estáticas
+- Resolver problemas de hidratação na raiz
+- Manter componentes server-side quando possível
+- Verificar dependências de hooks e interatividade
+- Documentar decisões de client vs server components
+
+#### Exemplos de Boas Práticas
+```typescript
+// ❌ Evitar: Marcar página inteira como client
+// page.tsx
+"use client"
+export default function Page() {
+  return <div>Conteúdo Estático</div>
+}
+
+// ✅ Correto: Manter página como server component
+// page.tsx
+export default function Page() {
+  return <div>Conteúdo Estático</div>
+}
+
+// ✅ Correto: Marcar apenas componente interativo
+// components/InteractiveComponent.tsx
+"use client"
+export function InteractiveComponent() {
+  const [state, setState] = useState()
+  return <div>Conteúdo Interativo</div>
+}
+```
+
+#### Checklist de Hidratação
+1. Identificar necessidade de interatividade
+2. Verificar uso de hooks React
+3. Avaliar dependências do componente
+4. Isolar lógica client-side
+5. Testar renderização inicial
+6. Validar comportamento pós-hidratação
+7. Documentar decisão arquitetural
+
 ## 3. Testes
 
 ### 3.1 Estratégia de Testes
