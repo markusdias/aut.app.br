@@ -11,12 +11,19 @@ export default async function DashboardLayout({
   children: ReactNode;
 }) {
   const user = await currentUser();
-  const { authorized } = await isAuthorized(user?.id!);
+  
+  if (!user?.id) {
+    console.log("user not found");
+    redirect("/sign-in");
+  }
+
+  const { authorized } = await isAuthorized(user.id);
 
   if (!authorized) {
     console.log("not authorized");
     redirect("/not-subscriber");
   }
+
   return (
     <div className="flex h-screen overflow-hidden w-full">
       <DashboardSideBar />
