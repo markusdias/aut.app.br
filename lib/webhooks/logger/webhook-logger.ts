@@ -2,6 +2,8 @@ import { db } from "@/db/drizzle";
 import { webhook_events } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { WebhookUserResolutionService } from "../../../src/webhooks/services/user-resolution.service";
+import { WebhookMetadata } from "../../../src/types/webhooks/stripe";
+import { WebhookPayload, WebhookPayloadObject } from "../../../src/types/webhooks/payload";
 
 // Feature flag para controle de logging
 const ENABLE_WEBHOOK_LOGGING = process.env.ENABLE_WEBHOOK_LOGGING === 'true';
@@ -14,7 +16,7 @@ export async function logWebhookEvent(
   provider: 'stripe' | 'clerk',
   eventId: string,
   eventType: string,
-  payload: unknown,
+  payload: WebhookPayloadObject,
   headers?: Record<string, string>
 ) {
   if (!ENABLE_WEBHOOK_LOGGING) return;
@@ -30,7 +32,7 @@ export async function logWebhookEvent(
 
   try {
     // Construir payload no formato correto
-    const formattedPayload = {
+    const formattedPayload: WebhookPayload = {
       type: eventType,
       data: {
         object: payload
@@ -47,6 +49,15 @@ export async function logWebhookEvent(
       success: resolutionMetadata.success
     });
 
+    const metadata: WebhookMetadata = {
+      headers,
+      received_at: new Date().toISOString(),
+      debug_info: {
+        initial_status: 'pending',
+        feature_flag: ENABLE_WEBHOOK_LOGGING
+      }
+    };
+
     await db.insert(webhook_events).values({
       event_id: eventId,
       event_type: eventType,
@@ -54,14 +65,7 @@ export async function logWebhookEvent(
       status: 'pending',
       raw_data: payload,
       user_id: userId,
-      metadata: {
-        headers,
-        received_at: new Date().toISOString(),
-        debug_info: {
-          initial_status: 'pending',
-          feature_flag: ENABLE_WEBHOOK_LOGGING
-        }
-      },
+      metadata,
       user_resolution_metadata: resolutionMetadata
     });
 
@@ -107,7 +111,7 @@ export async function updateWebhookStatus(
       .limit(1);
 
     const currentStatus = currentEvent[0]?.status;
-    const currentMetadata = currentEvent[0]?.metadata as Record<string, any> || {};
+    const currentMetadata = currentEvent[0]?.metadata as WebhookMetadata;
 
     console.log('📊 Status atual do webhook:', {
       eventId,
@@ -116,7 +120,7 @@ export async function updateWebhookStatus(
     });
 
     // Prepara os metadados atualizados com base no status
-    let updatedMetadata: Record<string, any> = { ...currentMetadata };
+    let updatedMetadata: WebhookMetadata = { ...currentMetadata };
 
     if (status === 'completed') {
       updatedMetadata = {

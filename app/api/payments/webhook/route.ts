@@ -10,6 +10,7 @@ import {
   sendPlanChangedNotification
 } from '@/utils/notifications/sendNotifications';
 import { logWebhookEvent, updateWebhookStatus } from '@/lib/webhooks/logger/webhook-logger';
+import { StripePlanMigrationData, StripeWebhookHandlerResponse } from '@/types/webhooks/stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -62,7 +63,7 @@ interface WebhookError extends Error {
   };
 }
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<NextResponse<StripeWebhookHandlerResponse>> {
   let webhookEventId: string | undefined;
 
   try {
@@ -74,7 +75,10 @@ export async function POST(req: Request) {
 
     if (!signature) {
       console.error("❌ Assinatura do Stripe ausente");
-      return new NextResponse("Missing signature", { status: 400 });
+      return new NextResponse(JSON.stringify({ 
+        status: 400,
+        message: "Missing signature"
+      }), { status: 400 });
     }
 
     let event: Stripe.Event;
@@ -93,7 +97,10 @@ export async function POST(req: Request) {
         error: err instanceof Error ? err.message : 'Unknown error',
         timestamp: new Date().toISOString()
       });
-      return new NextResponse("Webhook error", { status: 400 });
+      return new NextResponse(JSON.stringify({
+        status: 400,
+        message: "Webhook error"
+      }), { status: 400 });
     }
 
     // Log webhook event
@@ -135,7 +142,7 @@ export async function POST(req: Request) {
           timestamp: new Date().toISOString()
         });
 
-        let result;
+        let result: StripeWebhookHandlerResponse;
         switch (event.type) {
           case "product.updated":
             result = await handleProductUpdated(event);
@@ -183,9 +190,9 @@ export async function POST(req: Request) {
         await updateWebhookStatus(event.id, 'completed');
 
         return new NextResponse(JSON.stringify(result), {
-          status: result.status || 200
+          status: result.status
         });
-      } catch (error: any) {
+      } catch (error) {
         const err = error as WebhookError;
         console.error('❌ Erro no processamento do evento:', {
           type: event.type,
@@ -209,7 +216,10 @@ export async function POST(req: Request) {
 
     // Atualiza o status para completed ANTES de retornar a resposta
     await updateWebhookStatus(event.id, 'completed');
-    return new NextResponse("Webhook processed", { status: 200 });
+    return new NextResponse(JSON.stringify({
+      status: 200,
+      message: "Webhook processed"
+    }), { status: 200 });
   } catch (error) {
     const err = error as WebhookError;
     console.error("❌ Falha geral no webhook:", {
@@ -226,7 +236,10 @@ export async function POST(req: Request) {
       );
     }
 
-    return new NextResponse("Webhook failed", { status: 500 });
+    return new NextResponse(JSON.stringify({
+      status: 500,
+      message: "Webhook failed"
+    }), { status: 500 });
   }
 }
 
@@ -253,15 +266,14 @@ type SubscriptionEventData = {
   };
 };
 
-// Helper function to safely get price ID from subscription items
 function getPriceIdFromSubscription(subscription: Stripe.Subscription): string | undefined {
-  return subscription.items?.data?.[0]?.price?.id ?? undefined;
+  return subscription.items.data[0]?.price.id;
 }
 
 async function handleSubscriptionEvent(
   event: Stripe.Event,
   type: "created" | "updated" | "deleted"
-): Promise<NextResponse> {
+): Promise<StripeWebhookHandlerResponse> {
   const subscription = (event.data as any).object as Stripe.Subscription;
   const customerEmail = await getCustomerEmail(subscription.customer as string);
 
@@ -277,18 +289,12 @@ async function handleSubscriptionEvent(
   // IMPORTANTE: Se for parte de uma migração de plano, não processa aqui
   if (subscription.metadata?.isUpgrade === "true") {
     console.log('⏭️ Ignorando evento de subscription pois é parte de uma migração de plano');
-    return NextResponse.json({
-      status: 200,
-      message: "Subscription event ignored - part of plan migration"
-    });
+    return { status: 200, message: "Subscription event ignored - part of plan migration" };
   }
 
   if (!customerEmail) {
     console.error('❌ Customer email not found:', subscription.customer);
-    return NextResponse.json({
-      status: 500,
-      message: "Customer email could not be fetched",
-    }, { status: 500 });
+    return { status: 500, message: "Customer email could not be fetched" };
   }
 
   // Se não tiver userId nos metadados da assinatura, busca na tabela users pelo email
@@ -364,10 +370,10 @@ async function handleSubscriptionEvent(
           })
           .where(eq(subscriptions.subscriptionId, subscription.id));
 
-        return NextResponse.json({
+        return {
           status: 200,
           message: "Subscription cancelled - user is blocked/banned/deleted"
-        });
+        };
       }
 
       // Se o usuário estiver ativo, atualiza normalmente
@@ -413,10 +419,10 @@ async function handleSubscriptionEvent(
         });
       }
 
-      return NextResponse.json({
+      return {
         status: 200,
         message: "Subscription cancelled successfully",
-      });
+      };
     }
 
     // Se a assinatura não existe e é um evento "created", insere
@@ -427,11 +433,11 @@ async function handleSubscriptionEvent(
         .values(subscriptionData)
         .returning();
 
-      return NextResponse.json({
+      return {
         status: 200,
         message: "Subscription created successfully",
         data: insertedData,
-      });
+      };
     } else {
       // Se já existe, atualiza
       console.log('📝 Updating existing subscription record');
@@ -441,11 +447,11 @@ async function handleSubscriptionEvent(
         .where(eq(subscriptions.subscriptionId, subscription.id))
         .returning();
 
-      return NextResponse.json({
+      return {
         status: 200,
         message: "Subscription updated successfully",
         data: updatedData,
-      });
+      };
     }
   } catch (error) {
     const err = error as WebhookError;
@@ -454,21 +460,21 @@ async function handleSubscriptionEvent(
       error: err.message,
       stack: err.stack
     });
-    return NextResponse.json({
+    return {
       status: 500,
       error: err.message
-    }, { status: 500 });
+    };
   }
 }
 
 async function handleInvoiceEvent(
   event: Stripe.Event,
   status: "succeeded" | "failed"
-): Promise<NextResponse> {
+): Promise<StripeWebhookHandlerResponse> {
   const invoice = event.data.object as Stripe.Invoice;
   const customerEmail = await getCustomerEmail(invoice.customer as string);
 
-  console.log('📊 Invoice details:', {
+  console.log('�� Invoice details:', {
     email: customerEmail,
     amount: invoice.amount_paid,
     currency: invoice.currency,
@@ -481,10 +487,10 @@ async function handleInvoiceEvent(
   });
 
   if (!customerEmail) {
-    return NextResponse.json({
+    return {
       status: 500,
-      error: "Customer email could not be fetched",
-    }, { status: 500 });
+      error: "Customer email could not be fetched"
+    };
   }
 
   // Busca o userId pelo email se não estiver nos metadados
@@ -604,11 +610,11 @@ async function handleInvoiceEvent(
         }
       });
 
-      return NextResponse.json({
+      return {
         status: 200,
         message: `Invoice payment status updated to ${status}`,
         data: updatedInvoice,
-      });
+      };
     }
 
     console.log('📝 Creating new invoice');
@@ -618,11 +624,11 @@ async function handleInvoiceEvent(
       .values(invoiceData)
       .returning();
 
-    return NextResponse.json({
+    return {
       status: 200,
       message: `Invoice payment ${status}`,
       data: insertedInvoice,
-    });
+    };
   } catch (error) {
     const err = error as WebhookError;
     console.error('❌ Erro no processamento do evento:', {
@@ -630,10 +636,10 @@ async function handleInvoiceEvent(
       error: err.message,
       stack: err.stack
     });
-    return NextResponse.json({
+    return {
       status: 500,
       error: err.message
-    }, { status: 500 });
+    };
   }
 }
 
@@ -825,7 +831,7 @@ async function handlePlanMigration(
   });
 }
 
-async function handleCheckoutSessionCompleted(event: Stripe.Event) {
+async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<StripeWebhookHandlerResponse> {
   const session = event.data.object as Stripe.Checkout.Session;
   const metadata = session.metadata as CheckoutMetadata;
 
@@ -853,10 +859,10 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
 
     if (processedSubscription.length > 0 && processedSubscription[0].status === "active") {
       console.log('⚠️ Esta assinatura já foi processada e está ativa');
-      return NextResponse.json({
+      return {
         status: 200,
         message: "Subscription already processed"
-      });
+      };
     }
     
     // Busca assinatura ativa existente
@@ -911,10 +917,10 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
 
     console.log('✅ Assinatura processada com sucesso');
 
-    return NextResponse.json({
+    return {
       status: 200,
       message: "Assinatura processada com sucesso",
-    });
+    };
   } catch (error) {
     const err = error as WebhookError;
     console.error('❌ Erro ao processar assinatura:', err);
@@ -948,21 +954,21 @@ async function handlePlanEvent(event: Stripe.Event) {
         },
       });
 
-    return NextResponse.json({
+    return {
       status: 200,
       message: "Plan updated successfully",
-    });
+    };
   } catch (error) {
     const err = error as WebhookError;
     console.error("Error updating plan:", err);
-    return NextResponse.json({
+    return {
       status: 500,
       error: "Error updating plan",
-    });
+    };
   }
 }
 
-async function handleProductUpdated(event: Stripe.Event) {
+async function handleProductUpdated(event: Stripe.Event): Promise<StripeWebhookHandlerResponse> {
   try {
     const product = event.data.object as Stripe.Product;
     console.log("🔄 Processando product.updated:", {
@@ -1040,7 +1046,7 @@ async function handleProductUpdated(event: Stripe.Event) {
   }
 }
 
-async function handleProductDeleted(event: Stripe.Event) {
+async function handleProductDeleted(event: Stripe.Event): Promise<StripeWebhookHandlerResponse> {
   try {
     const product = event.data.object as Stripe.Product;
     console.log("🗑️ Processando product.deleted:", {
@@ -1072,7 +1078,7 @@ async function handleProductDeleted(event: Stripe.Event) {
   }
 }
 
-async function handlePriceUpdated(event: Stripe.Event) {
+async function handlePriceUpdated(event: Stripe.Event): Promise<StripeWebhookHandlerResponse> {
   try {
     const price = event.data.object as Stripe.Price;
     console.log("🔄 Processando price.updated:", {
@@ -1130,10 +1136,10 @@ async function handlePriceUpdated(event: Stripe.Event) {
   }
 }
 
-async function handlePriceDeleted(event: Stripe.Event) {
+async function handlePriceDeleted(event: Stripe.Event): Promise<StripeWebhookHandlerResponse> {
   try {
     const price = event.data.object as Stripe.Price;
-    console.log("🗑️ Processando price.deleted:", {
+    console.log("��️ Processando price.deleted:", {
       priceId: price.id
     });
     
